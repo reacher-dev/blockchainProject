@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DePIN 租屋噪音治理系統 - 互動提案</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&display=swap');
+        
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #fdfbf7;
+            color: #433d3c;
+        }
+
+        .chart-container {
+            position: relative;
+            width: 100%;
+            max-width: 700px;
+            margin-left: auto;
+            margin-right: auto;
+            height: 300px;
+            max-height: 400px;
+        }
+
+        .room-card {
+            transition: all 0.3s ease;
+        }
+
+        .room-card.active-noise {
+            border-color: #ef4444;
+            background-color: #fee2e2;
+            transform: scale(1.02);
+        }
+
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
+        }
+
+        .gradient-text {
+            background: linear-gradient(135deg, #5d5d5d 0%, #a1a1a1 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        @keyframes pulse-red {
+            0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+            70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+        }
+
+        .pulse {
+            animation: pulse-red 1.5s infinite;
+        }
+    </style>
+</head>
+<body class="min-h-screen">
+
+<!-- Chosen Palette: Warm Neutrals & Sage (暖木與鼠尾草綠) 
+     主要背景: #fdfbf7 (米白)
+     強調色: #6b705c (鼠尾草綠), #a5a58d (橄欖綠)
+     警告色: #ef4444 (珊瑚紅)
+-->
+
+<!-- Application Structure Plan: 
+     1. 英雄視覺區 (Hero): 快速介紹 DePIN + DeFi + DAO 核心概念與錢包狀態。
+     2. 即時模擬儀表板 (MockControl & Dashboard): 整合企劃中的第一階段 MockControl。使用者可手動觸發噪音，觀察 Chart.js 即時變動與鏈上餘額自動分配。
+     3. 系統架構深掘 (Architecture): 使用直觀的 HTML/CSS 卡片展示三層架構。
+     4. DAO 治理法庭 (Dispute Resolution): 模擬申訴流程，讓使用者體驗「代碼即法律」後的民主修正機制。
+     5. 團隊與開發路徑 (Team & Roadmap): 展示分工與時程。
+     
+     選擇此結構的原因：將硬體、金融與治理三個抽象概念，轉化為「可見、可玩」的互動區塊，提高提案的說服力與直觀性。
+-->
+
+<!-- Visualization & Content Choices:
+     - 即時分貝圖表 (Decibel History): 使用 Chart.js Line Chart 展示噪音波動。目標是呈現「預言機」數據輸入。
+     - 房間狀態矩陣: HTML/CSS 動態卡片。目標是呈現 5 人居住環境與餘額狀態。
+     - 自動化交易帳本: 列表展示。目標是呈現 DeFi 補償金分發的即時性。
+     - 治理提案列表: 互動式按鈕。目標是呈現 DAO 申訴邏輯。
+     - 確認：無使用 SVG 圖像。無使用 Mermaid JS。
+-->
+
+<!-- CONFIRMATION: NO SVG graphics used. NO Mermaid JS used. -->
+
+<nav class="sticky top-0 z-50 glass-panel py-4 px-6 mb-8 shadow-sm">
+    <div class="max-w-7xl mx-auto flex justify-between items-center">
+        <div class="flex items-center space-x-2">
+            <span class="text-2xl font-bold tracking-tighter text-gray-800">DePIN <span class="font-light text-gray-400">NoiseGov</span></span>
+        </div>
+        <div class="hidden md:flex space-x-8 text-sm font-medium">
+            <a href="#concept" class="hover:text-olive-600 transition">核心概念</a>
+            <a href="#dashboard" class="hover:text-olive-600 transition">互動模擬</a>
+            <a href="#architecture" class="hover:text-olive-600 transition">技術架構</a>
+            <a href="#team" class="hover:text-olive-600 transition">團隊分工</a>
+        </div>
+        <button id="walletBtn" class="bg-gray-800 text-white px-4 py-2 rounded-full text-xs hover:bg-gray-700 transition" onclick="toggleWallet()">
+            連接 MetaMask
+        </button>
+    </div>
+</nav>
+
+<main class="max-w-7xl mx-auto px-4 pb-20">
+    
+    <!-- Hero Section -->
+    <section id="concept" class="text-center mb-16 py-10">
+        <h1 class="text-5xl font-extrabold mb-6 gradient-text">以代碼代替房東當裁判</h1>
+        <p class="text-xl text-gray-600 max-w-3xl mx-auto leading-relaxed">
+            這是一個虛實整合的 Web3 解決方案。我們將實體感測器（DePIN）、智慧金庫（DeFi）與去中心化治理（DAO）深度結合，解決分租房客間的噪音糾紛。
+        </p>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mt-12">
+            <div class="p-6 rounded-2xl bg-white shadow-sm border border-gray-100">
+                <div class="text-3xl mb-4">📡</div>
+                <h3 class="font-bold text-lg mb-2">DePIN 硬體層</h3>
+                <p class="text-sm text-gray-500">部署實體感測器，透過加密簽章將客觀分貝數據送上區塊鏈，保障隱私且不可篡改。</p>
+            </div>
+            <div class="p-6 rounded-2xl bg-white shadow-sm border border-gray-100">
+                <div class="text-3xl mb-4">💰</div>
+                <h3 class="font-bold text-lg mb-2">DeFi 金融層</h3>
+                <p class="text-sm text-gray-500">智慧合約託管保證金，觸發參數自動扣款並「叮咚」分紅給其餘房客作為補償。</p>
+            </div>
+            <div class="p-6 rounded-2xl bg-white shadow-sm border border-gray-100">
+                <div class="text-3xl mb-4">⚖️</div>
+                <h3 class="font-bold text-lg mb-2">DAO 治理層</h3>
+                <p class="text-sm text-gray-500">民主申訴機制，房客可對爭議扣款進行投票退款，實現社區自治管理。</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Interactive Dashboard Section -->
+    <section id="dashboard" class="mb-16">
+        <div class="bg-white rounded-3xl p-8 shadow-xl border border-gray-50">
+            <div class="flex flex-col md:flex-row justify-between items-start mb-8 border-b border-gray-100 pb-6">
+                <div>
+                    <h2 class="text-2xl font-bold mb-2">公寓即時儀表板 (Demo Mode)</h2>
+                    <p class="text-sm text-gray-500 italic">本區塊模擬「第一階段」的軟硬體聯動：您可以手動觸發噪音，觀察合約反應。</p>
+                </div>
+                <div class="mt-4 md:mt-0 flex items-center space-x-3 bg-gray-50 p-2 rounded-lg">
+                    <span class="inline-block w-3 h-3 bg-green-500 rounded-full"></span>
+                    <span class="text-xs font-bold uppercase tracking-widest text-gray-400">Anvil Local Node Connected</span>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-10">
+                <!-- Room Grid -->
+                <div class="lg:col-span-1">
+                    <h4 class="text-sm font-bold text-gray-400 mb-4 uppercase">房客狀態與保證金</h4>
+                    <div id="roomContainer" class="space-y-4">
+                        <!-- Rooms will be rendered here by JS -->
+                    </div>
+                </div>
+
+                <!-- Control Panel & Chart -->
+                <div class="lg:col-span-2">
+                    <div class="bg-gray-50 rounded-2xl p-6 mb-6">
+                        <h4 class="text-sm font-bold text-gray-800 mb-4">MockControl：虛擬噪音觸發</h4>
+                        <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+                            <select id="mockRoom" class="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-olive-200">
+                                <option value="A">房間 A (Alice)</option>
+                                <option value="B">房間 B (Bob)</option>
+                                <option value="C">房間 C (Charlie)</option>
+                                <option value="D">房間 D (David)</option>
+                                <option value="E">房間 E (Eve)</option>
+                            </select>
+                            <input type="number" id="mockDb" value="75" min="30" max="120" class="bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-olive-200" placeholder="分貝數">
+                            <button onclick="triggerViolation()" class="col-span-2 bg-red-500 text-white rounded-lg px-4 py-2 text-sm font-bold hover:bg-red-600 transition shadow-md">
+                                ⚡ 發送噪音報告
+                            </button>
+                        </div>
+                        <p class="text-[10px] text-gray-400 mt-3">* 點擊將進行私鑰簽章並傳送 JSON Payload 至模擬合約</p>
+                    </div>
+
+                    <div class="chart-container">
+                        <canvas id="noiseChart"></canvas>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Ledger -->
+            <div class="mt-10">
+                <h4 class="text-sm font-bold text-gray-400 mb-4 uppercase">智慧合約自動帳本 (Event Logs)</h4>
+                <div class="overflow-hidden border border-gray-100 rounded-xl">
+                    <table class="min-w-full divide-y divide-gray-100">
+                        <thead class="bg-gray-50">
+                            <tr>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">時間</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">事件類型</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">相關房間</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">金額變動</th>
+                                <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">交易雜湊</th>
+                            </tr>
+                        </thead>
+                        <tbody id="ledgerBody" class="bg-white divide-y divide-gray-100 text-sm">
+                            <!-- Logs will be added here -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- DAO Section -->
+    <section id="governance" class="mb-16">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-10 items-center">
+            <div>
+                <h2 class="text-3xl font-bold mb-4">DAO 民主申訴法庭</h2>
+                <p class="text-gray-600 mb-6 leading-relaxed">
+                    自動扣款雖然公正，但難免有例外（如打破花瓶、貓咪推倒東西）。被扣款者可在 24 小時內發起申訴。其餘 4 位房客與房東將組成臨時陪審團進行投票。
+                </p>
+                <div class="bg-olive-50 p-6 rounded-2xl border border-olive-100">
+                    <h5 class="font-bold text-olive-800 mb-2">治理規則：</h5>
+                    <ul class="text-sm text-olive-700 space-y-2">
+                        <li>• 贊成票 > 60%：保證金全額退回。</li>
+                        <li>• 只有持有房租 NFT 的房客具備投票權。</li>
+                        <li>• 申訴需消耗少量治理代幣以防止惡意騷擾。</li>
+                    </ul>
+                </div>
+            </div>
+            <div class="bg-white p-6 rounded-3xl shadow-lg border border-gray-100">
+                <h4 class="font-bold mb-4 flex items-center">
+                    <span class="mr-2">⚖️</span> 待決申訴提案
+                </h4>
+                <div id="proposalList" class="space-y-4">
+                    <!-- Proposal item -->
+                    <div class="p-4 rounded-xl border border-gray-100 bg-gray-50">
+                        <div class="flex justify-between items-start mb-2">
+                            <span class="text-xs font-bold px-2 py-1 bg-blue-100 text-blue-600 rounded">PROPOSAL #042</span>
+                            <span class="text-xs text-gray-400">12:05 PM</span>
+                        </div>
+                        <p class="text-sm font-medium mb-3">Room C 申請退回 05/17 之噪音罰款。申訴理由：「當晚是打破大碗，並非刻意噪音。」</p>
+                        <div class="w-full bg-gray-200 rounded-full h-1.5 mb-4">
+                            <div class="bg-green-500 h-1.5 rounded-full" style="width: 25%"></div>
+                        </div>
+                        <div class="flex space-x-2">
+                            <button onclick="vote(true)" class="flex-1 bg-white border border-gray-200 py-2 rounded-lg text-xs font-bold hover:bg-green-50 transition">贊成 (1)</button>
+                            <button onclick="vote(false)" class="flex-1 bg-white border border-gray-200 py-2 rounded-lg text-xs font-bold hover:bg-red-50 transition">反對 (2)</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Architecture Section -->
+    <section id="architecture" class="mb-16">
+        <h2 class="text-2xl font-bold mb-8 text-center">技術架構圖 (系統棧)</h2>
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div class="border-t-4 border-gray-800 bg-white p-6 shadow-sm">
+                <h3 class="font-black mb-4">1. 實體層 (DePIN)</h3>
+                <p class="text-sm text-gray-500 mb-4">Raspberry Pi + 5x Mic</p>
+                <ul class="text-xs space-y-2 text-gray-600">
+                    <li class="bg-gray-50 p-2 rounded">✓ 24H 滾動式 FFT 音訊分析</li>
+                    <li class="bg-gray-50 p-2 rounded">✓ 隱私保護：特徵提取後即刪</li>
+                    <li class="bg-gray-50 p-2 rounded">✓ ECDSA 數據私鑰簽章</li>
+                </ul>
+            </div>
+            <div class="border-t-4 border-olive-600 bg-white p-6 shadow-sm">
+                <h3 class="font-black mb-4">2. 協議層 (Foundry)</h3>
+                <p class="text-sm text-gray-500 mb-4">RentEscrow.sol on Anvil</p>
+                <ul class="text-xs space-y-2 text-gray-600">
+                    <li class="bg-gray-50 p-2 rounded">✓ 預言機驗證 (ecrecover)</li>
+                    <li class="bg-gray-50 p-2 rounded">✓ 自動扣款與 1/N 補償邏輯</li>
+                    <li class="bg-gray-50 p-2 rounded">✓ 治理提案生命週期管理</li>
+                </ul>
+            </div>
+            <div class="border-t-4 border-blue-500 bg-white p-6 shadow-sm">
+                <h3 class="font-black mb-4">3. 應用層 (React)</h3>
+                <p class="text-sm text-gray-500 mb-4">Frontend & Web3 Integration</p>
+                <ul class="text-xs space-y-2 text-gray-600">
+                    <li class="bg-gray-50 p-2 rounded">✓ ethers.js 錢包與鏈上交互</li>
+                    <li class="bg-gray-50 p-2 rounded">✓ Chart.js 即時視覺化監控</li>
+                    <li class="bg-gray-50 p-2 rounded">✓ ngrok 穿透支援遠端發表</li>
+                </ul>
+            </div>
+        </div>
+    </section>
+
+    <!-- Team Section -->
+    <section id="team" class="mb-16">
+        <h2 class="text-2xl font-bold mb-8">團隊黃金分工</h2>
+        <div class="flex flex-wrap -m-2">
+            <div class="w-full md:w-1/5 p-2">
+                <div class="bg-gray-100 p-4 rounded-xl text-center h-full">
+                    <div class="text-xl mb-1">🏗️</div>
+                    <div class="font-bold text-sm">智慧合約</div>
+                    <div class="text-[10px] text-gray-400">Foundry / Solidity</div>
+                </div>
+            </div>
+            <div class="w-full md:w-1/5 p-2">
+                <div class="bg-gray-100 p-4 rounded-xl text-center h-full">
+                    <div class="text-xl mb-1">🎨</div>
+                    <div class="font-bold text-sm">前端整合</div>
+                    <div class="text-[10px] text-gray-400">React / Web3.js</div>
+                </div>
+            </div>
+            <div class="w-full md:w-1/5 p-2">
+                <div class="bg-gray-100 p-4 rounded-xl text-center h-full border-2 border-olive-500">
+                    <div class="text-xl mb-1">⚙️</div>
+                    <div class="font-bold text-sm">IoT 硬體</div>
+                    <div class="text-[10px] text-gray-400">RPi / Python</div>
+                </div>
+            </div>
+            <div class="w-full md:w-1/5 p-2">
+                <div class="bg-gray-100 p-4 rounded-xl text-center h-full">
+                    <div class="text-xl mb-1">🔗</div>
+                    <div class="font-bold text-sm">預言機/後端</div>
+                    <div class="text-[10px] text-gray-400">Signatures / Bridge</div>
+                </div>
+            </div>
+            <div class="w-full md:w-1/5 p-2">
+                <div class="bg-gray-100 p-4 rounded-xl text-center h-full">
+                    <div class="text-xl mb-1">🎤</div>
+                    <div class="font-bold text-sm">PM / 簡報</div>
+                    <div class="text-[10px] text-gray-400">Docs / Demo</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+</main>
+
+<footer class="bg-gray-900 text-gray-500 py-10 text-center text-sm">
+    <div class="max-w-7xl mx-auto px-4">
+        <p class="mb-2">DePIN Rental Noise Governance System Project Proposal</p>
+        <p class="text-xs">Built with Vanilla JS, Tailwind CSS & Chart.js for Final Project Demo.</p>
+    </div>
+</footer>
+
+<script>
+    // State Management
+    let rooms = [
+        { id: 'A', name: 'Alice', balance: 2000, status: 'Normal' },
+        { id: 'B', name: 'Bob', balance: 2000, status: 'Normal' },
+        { id: 'C', name: 'Charlie', balance: 1800, status: 'Normal' },
+        { id: 'D', name: 'David', balance: 2000, status: 'Normal' },
+        { id: 'E', name: 'Eve', balance: 2000, status: 'Normal' }
+    ];
+
+    let noiseChart;
+    let chartData = Array(20).fill(40);
+    let labels = Array(20).fill('');
+
+    // Initialization
+    window.onload = function() {
+        initChart();
+        renderRooms();
+        addLog('System', 'Smart Contract Deployed', 'All Rooms', '-', '0x3a1...e42');
+        
+        // Background noise simulation
+        setInterval(() => {
+            const base = 40;
+            const fluctuation = Math.random() * 5;
+            updateChart(base + fluctuation);
+        }, 2000);
+    };
+
+    function initChart() {
+        const ctx = document.getElementById('noiseChart').getContext('2d');
+        noiseChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: '公寓實時分貝 (dB)',
+                    data: chartData,
+                    borderColor: '#6b705c',
+                    backgroundColor: 'rgba(107, 112, 92, 0.1)',
+                    fill: true,
+                    tension: 0.4,
+                    pointRadius: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        min: 30,
+                        max: 110,
+                        grid: { color: 'rgba(0,0,0,0.05)' }
+                    },
+                    x: { display: false }
+                },
+                plugins: {
+                    legend: { display: false }
+                }
+            }
+        });
+    }
+
+    function renderRooms() {
+        const container = document.getElementById('roomContainer');
+        container.innerHTML = rooms.map(room => `
+            <div id="card-${room.id}" class="room-card glass-panel p-4 rounded-xl flex justify-between items-center border border-gray-100">
+                <div>
+                    <div class="text-xs font-bold text-gray-400 uppercase">Room ${room.id}</div>
+                    <div class="font-bold text-gray-800">${room.name}</div>
+                </div>
+                <div class="text-right">
+                    <div class="text-sm font-black text-olive-700">${room.balance} <span class="text-[10px] font-normal text-gray-400">TEST</span></div>
+                    <div class="text-[10px] ${room.status === 'Normal' ? 'text-green-500' : 'text-red-500'} font-bold">${room.status}</div>
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function updateChart(val) {
+        chartData.push(val);
+        chartData.shift();
+        noiseChart.update('none');
+    }
+
+    function triggerViolation() {
+        const roomID = document.getElementById('mockRoom').value;
+        const db = parseInt(document.getElementById('mockDb').value);
+        
+        // UI Animation
+        const card = document.getElementById(`card-${roomID}`);
+        card.classList.add('active-noise', 'pulse');
+        updateChart(db);
+
+        // Process Penalty Logic (Mock Contract)
+        setTimeout(() => {
+            if (db > 70) {
+                const penalty = 200;
+                const reward = penalty / (rooms.length - 1);
+
+                rooms = rooms.map(r => {
+                    if (r.id === roomID) {
+                        return { ...r, balance: r.balance - penalty, status: 'Violated' };
+                    } else {
+                        return { ...r, balance: r.balance + reward };
+                    }
+                });
+
+                renderRooms();
+                addLog('Penalty', 'Noise Violation', `Room ${roomID}`, `-${penalty} / +${reward}`, `0x${Math.random().toString(16).slice(2, 10)}...`);
+                
+                // Clear warning status
+                setTimeout(() => {
+                    rooms = rooms.map(r => ({ ...r, status: 'Normal' }));
+                    renderRooms();
+                    document.getElementById(`card-${roomID}`).classList.remove('active-noise', 'pulse');
+                }, 3000);
+            }
+        }, 1000);
+    }
+
+    function addLog(type, event, room, change, hash) {
+        const body = document.getElementById('ledgerBody');
+        const now = new Date();
+        const timeStr = now.getHours() + ":" + String(now.getMinutes()).padStart(2, '0');
+        
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td class="px-6 py-4 whitespace-nowrap text-gray-400">${timeStr}</td>
+            <td class="px-6 py-4 whitespace-nowrap font-medium">${event}</td>
+            <td class="px-6 py-4 whitespace-nowrap">${room}</td>
+            <td class="px-6 py-4 whitespace-nowrap font-bold ${change.includes('-') ? 'text-red-500' : 'text-green-600'}">${change}</td>
+            <td class="px-6 py-4 whitespace-nowrap text-xs text-blue-400 font-mono">${hash}</td>
+        `;
+        body.prepend(row);
+    }
+
+    function toggleWallet() {
+        const btn = document.getElementById('walletBtn');
+        if (btn.innerText.includes('連接')) {
+            btn.innerText = '0x90F8...1111 (Anvil)';
+            btn.classList.replace('bg-gray-800', 'bg-olive-600');
+        } else {
+            btn.innerText = '連接 MetaMask';
+            btn.classList.replace('bg-olive-600', 'bg-gray-800');
+        }
+    }
+
+    function vote(approve) {
+        alert(approve ? "您投下了贊成票！若過半數，資金將自動退回。" : "您投下了反對票。");
+    }
+</script>
+
+</body>
+</html>
