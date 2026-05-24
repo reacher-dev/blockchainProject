@@ -24,7 +24,7 @@ contract DeployScript is Script {
 
         console.log("RentEscrow deployed at:", address(escrow));
         console.log("Landlord:", escrow.landlord());
-        console.log("Oracle  :", escrow.oracle());
+        //console.log("Oracle  :", escrow.oracle());
 
         vm.stopBroadcast();
     }
