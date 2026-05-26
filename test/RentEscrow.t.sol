@@ -416,6 +416,24 @@ contract RentEscrowTest is Test {
         assertTrue(passed);
     }
 
+    function test_ExecuteEarlyWhenAllEligibleVotersHaveVoted() public {
+        (, uint256 pid) = _setupAppeal(0, 80);
+
+        // Eligible voters are the 4 non-appellant tenants + landlord.
+        vm.prank(tenantAddrs[1]); escrow.vote(pid, true);
+        vm.prank(tenantAddrs[2]); escrow.vote(pid, true);
+        vm.prank(tenantAddrs[3]); escrow.vote(pid, true);
+        vm.prank(tenantAddrs[4]); escrow.vote(pid, true);
+        vm.prank(landlord);       escrow.vote(pid, true);
+
+        // No time warp: all eligible voters are done, so early execution is allowed.
+        escrow.executeProposal(pid);
+
+        (,,,,, bool executed, bool passed) = escrow.proposals(pid);
+        assertTrue(executed);
+        assertTrue(passed);
+    }
+
     // ─── 8. Fix 3 — Landlord Votes ───────────────────────────────────────────────
 
     function test_LandlordCanVote() public {

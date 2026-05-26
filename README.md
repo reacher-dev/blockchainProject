@@ -203,12 +203,12 @@ POST http://127.0.0.1:8000/noise/ingest
 
 ### 6. Pico W / INMP441 設定
 
-在 `hardware/pico_noise_sender.py` 設定 Wi-Fi 與後端位置：
+在 `hardware/pico_noise_sender.py` 設定 Wi-Fi 與後端位置。使用真實 Pico W 時，`ORACLE_URL` 要填 Windows 電腦的區網 IPv4，不要填 `127.0.0.1`：
 
 ```python
 SSID = "YOUR_WIFI_NAME"
 PASSWORD = "YOUR_WIFI_PASSWORD"
-ORACLE_URL = "http://YOUR_BACKEND_IP:8000/"
+ORACLE_URL = "http://YOUR_WINDOWS_IP:8000/"
 ```
 
 沒有接麥克風時維持：
@@ -232,6 +232,68 @@ INMP441 SCK -> Pico GP10
 INMP441 WS  -> Pico GP11
 INMP441 SD  -> Pico GP12
 INMP441 L/R -> GND
+```
+
+### Windows + 真實 Pico W 測試方式
+
+1. 在 Windows 找出 Wi-Fi IPv4：
+
+```powershell
+ipconfig
+```
+
+找 `Wireless LAN adapter Wi-Fi` 下面的 `IPv4 Address`，例如：
+
+```text
+192.168.1.50
+```
+
+2. 修改 `hardware/pico_noise_sender.py`：
+
+```python
+SSID = "your_wifi_name"
+PASSWORD = "your_wifi_password"
+ORACLE_URL = "http://192.168.1.50:8000/"
+SENSOR_MODE = "inmp441"
+```
+
+3. 在 Windows 啟動 backend relay：
+
+```powershell
+cd path\to\blockchainProject
+python -m pip install web3 eth-account
+$env:ORACLE_SUBMIT_ONCHAIN="1"
+$env:ORACLE_RPC_URL="http://127.0.0.1:8545"
+python hardware\web3_oracle.py
+```
+
+4. 如果 Pico W 連不到 backend，確認 Windows 防火牆允許 Python 接收 port `8000` 的連線。
+
+5. 將程式跑在 Pico W 上：
+
+```powershell
+python -m mpremote connect COM3 run hardware/pico_noise_sender.py
+```
+
+如果 COM port 不同，先在 Windows 裝置管理員確認 Pico W 的實際 COM port。
+
+6. 確認 backend 收到真實麥克風資料：
+
+```powershell
+curl http://127.0.0.1:8000/noise/latest
+```
+
+成功時應該看到：
+
+```json
+"source": "inmp441"
+```
+
+7. 確認穩定後，可以把程式寫進 Pico W 開機自動執行：
+
+```powershell
+python -m mpremote connect COM3 fs cp hardware/pico_noise_sender.py :main.py
+python -m mpremote connect COM3 reset
 ```
 
 ### 7. MetaMask 設定
@@ -261,6 +323,7 @@ INMP441 L/R -> GND
 4. Backend Oracle Relay 接收 payload，轉成 room index / decibels，並可送出 `reportNoise`
 5. 合約自動扣款，補償金先鎖定到其他房客帳戶
 6. 被扣款者可發起 DAO 申訴，其他人投票決定
+7. `結案` 原則上在 24 小時投票期後執行；如果所有 eligible voters 都已投票，也可以提前結案
 
 ## 專案結構
 

@@ -1,7 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { connectWallet, signAsOracle, ROOM_NAMES, CONTRACT_ADDRESS, fmt } from "./web3.js";
 
 const C = { bg: "#fdfbf7", text: "#433d3c", sage: "#6b705c", border: "#e8e5df", card: "#ffffff", muted: "#9b9590" };
+const SENSOR_API_URL = import.meta.env.VITE_SENSOR_API_URL || "http://127.0.0.1:8000";
 
 export default function App() {
   const [contract, setContract] = useState(null);
@@ -22,6 +23,8 @@ export default function App() {
   const [flashRoom, setFlashRoom] = useState(null);
 
   const [dbHistory, setDbHistory] = useState(Array(30).fill(42));
+  const [backendNoise, setBackendNoise] = useState(null);
+  const lastBackendTimestamp = useRef(null);
 
   const [appealVid, setAppealVid] = useState("");
   const [appealReason, setAppealReason] = useState("");
@@ -31,9 +34,44 @@ export default function App() {
 
   useEffect(() => {
     const id = setInterval(() => {
-      setDbHistory(h => [...h.slice(1), 38 + Math.random() * 9]);
+      if (!backendNoise) setDbHistory(h => [...h.slice(1), 38 + Math.random() * 9]);
     }, 1200);
     return () => clearInterval(id);
+  }, [backendNoise]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadBackendNoise() {
+      try {
+        const res = await fetch(`${SENSOR_API_URL}/noise/latest`);
+        if (!res.ok) return;
+
+        const json = await res.json();
+        const data = json.data;
+        if (cancelled || !data) return;
+
+        setBackendNoise(data);
+
+        if (data.timestamp !== lastBackendTimestamp.current) {
+          lastBackendTimestamp.current = data.timestamp;
+          setDbHistory(h => [...h.slice(1), Number(data.decibels)]);
+          if (data.reportAllowed) {
+            setFlashRoom(Number(data.roomIndex));
+            setTimeout(() => setFlashRoom(null), 2000);
+          }
+        }
+      } catch {
+        if (!cancelled) setBackendNoise(null);
+      }
+    }
+
+    loadBackendNoise();
+    const id = setInterval(loadBackendNoise, 1000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
   }, []);
 
   async function handleConnect() {
@@ -42,15 +80,15 @@ export default function App() {
       if (w.chainId !== 31337n) { setMsg("⚠ 請切換到 Anvil（Chain ID: 31337）"); return; }
       setContract(w.contract); setProvider(w.provider);
       setAccount(w.address); setChainId(w.chainId);
-      await loadAll(w.contract, w.provider);
+      await loadAll(w.contract, w.provider, w.address);
       setMsg("");
     } catch (e) { setMsg("❌ " + e.message); }
   }
 
-  async function loadAll(c, p) {
+  async function loadAll(c, p, address) {
     const ct = c || contract; const pv = p || provider;
     if (!ct) return;
-    await Promise.all([loadRooms(ct), loadViolations(ct), loadProposals(ct), loadLogs(ct, pv)]);
+    await Promise.all([loadRooms(ct), loadViolations(ct), loadProposals(ct, address), loadLogs(ct, pv)]);
   }
 
   async function loadRooms(ct) {
@@ -65,20 +103,21 @@ export default function App() {
   async function loadViolations(ct) {
     const count = Number(await ct.violationCount());
     const list = [];
-    for (let i = count; i >= Math.max(1, count - 7); i--) {
+    for (let i = count - 1; i >= Math.max(0, count - 8); i--) {
       const v = await ct.violations(i);
       list.push({ id: i, room: Number(v.roomIndex), db: Number(v.decibels), penalty: v.penaltyPaid, appealed: v.appealed });
     }
     setViolations(list);
   }
 
-  async function loadProposals(ct) {
+  async function loadProposals(ct, address) {
     const count = Number(await ct.proposalCount());
     const list = [];
-    for (let i = count; i >= 1; i--) {
+    for (let i = count - 1; i >= 0; i--) {
       const p = await ct.proposals(i);
       const [yes, no] = await ct.getVotes(i);
-      const voted = account ? await ct.hasVoted(i, account) : false;
+      const voter = address || account;
+      const voted = voter ? await ct.hasVoted(i, voter) : false;
       list.push({ id: i, violationId: Number(p.violationId), appellant: p.appellant, yesVotes: Number(yes), noVotes: Number(no), executed: p.executed, passed: p.passed, hasVoted: voted });
     }
     setProposals(list);
@@ -250,6 +289,14 @@ export default function App() {
                 <div style={{ fontSize: 11, color: C.muted, marginTop: 8 }}>
                   <span style={{ color: "#dc2626" }}>— </span>噪音門檻 70 dB
                 </div>
+                {backendNoise && (
+                  <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12 }}>
+                    <span style={{ color: C.muted }}>Backend Sensor</span>
+                    <span style={{ color: backendNoise.reportAllowed ? "#dc2626" : C.sage, fontWeight: 700 }}>
+                      {backendNoise.roomLabel} · {backendNoise.decibels} dB · {backendNoise.source}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 

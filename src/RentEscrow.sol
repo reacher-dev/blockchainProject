@@ -459,7 +459,8 @@ contract RentEscrow is ReentrancyGuard {
     }
 
     /**
-     * @notice Finalize a proposal after its 24-hour voting window closes.
+     * @notice Finalize a proposal after its 24-hour voting window closes, or
+     *         earlier once every eligible voter has voted.
      *
      * Fix 2 — requires VOTE_QUORUM votes to have been cast; reverts otherwise.
      * Fix 1 — on failure, releases locked rewards to recipients;
@@ -471,11 +472,14 @@ contract RentEscrow is ReentrancyGuard {
         if (proposalId >= proposalCount) revert ProposalNotFound();
 
         Proposal storage p = proposals[proposalId];
-        if (p.executed)                                          revert AlreadyExecuted();
-        if (block.timestamp <= p.createdAt + APPEAL_WINDOW)     revert VotingStillOpen();
+        if (p.executed) revert AlreadyExecuted();
 
         // Fix 2 — quorum check
         uint256 total = p.yesVotes + p.noVotes;
+        bool allEligibleVoted = total >= tenantCount; // tenants except appellant + landlord
+        if (block.timestamp <= p.createdAt + APPEAL_WINDOW && !allEligibleVoted) {
+            revert VotingStillOpen();
+        }
         if (total < VOTE_QUORUM) revert QuorumNotReached();
 
         p.executed = true;

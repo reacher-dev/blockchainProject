@@ -11,7 +11,7 @@ This folder contains the Raspberry Pi Pico W and Windows relay prototype for the
 
 ## Pico W Setup
 
-Edit these values in `pico_noise_sender.py` before copying it to the Pico W:
+Edit these values in `pico_noise_sender.py` before copying it to the Pico W. `ORACLE_URL` must use the Windows computer's LAN IPv4 address, not `127.0.0.1`:
 
 ```python
 SSID = "YOUR_WIFI_NAME"
@@ -36,6 +36,51 @@ To make the Pico W auto-run after power-on:
 ```powershell
 python -m mpremote connect COM3 fs cp hardware/pico_noise_sender.py :main.py
 python -m mpremote connect COM3 reset
+```
+
+## Real Pico W on Windows
+
+Find the Windows Wi-Fi IPv4 address:
+
+```powershell
+ipconfig
+```
+
+Use the `IPv4 Address` from `Wireless LAN adapter Wi-Fi`, for example:
+
+```python
+ORACLE_URL = "http://192.168.1.50:8000/"
+SENSOR_MODE = "inmp441"
+```
+
+Run the backend relay on Windows:
+
+```powershell
+cd path\to\blockchainProject
+python -m pip install web3 eth-account
+$env:ORACLE_SUBMIT_ONCHAIN="1"
+$env:ORACLE_RPC_URL="http://127.0.0.1:8545"
+python hardware\web3_oracle.py
+```
+
+If the Pico W cannot reach the backend, allow Python through Windows Firewall for port `8000`.
+
+Run the Pico script:
+
+```powershell
+python -m mpremote connect COM3 run hardware/pico_noise_sender.py
+```
+
+Verify that the backend is receiving real microphone data:
+
+```powershell
+curl http://127.0.0.1:8000/noise/latest
+```
+
+The response should include:
+
+```json
+"source": "inmp441"
 ```
 
 ## Backend Oracle Relay
