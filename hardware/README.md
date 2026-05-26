@@ -4,8 +4,9 @@ This folder contains the Raspberry Pi Pico W and Windows relay prototype for the
 
 ## Files
 
-- `pico_noise_sender.py`: MicroPython program for Pico W. It sends simulated noise violation JSON to the backend oracle relay every 5 seconds. It also includes an INMP441 I2S microphone integration point.
+- `pico_noise_sender.py`: MicroPython program for Pico W. It reads the INMP441 I2S microphone, sends live monitoring JSON every 0.1 seconds, and only reports an on-chain violation after sustained noise.
 - `web3_oracle.py`: Python HTTP relay that receives Pico W POST requests, validates JSON, keeps latest/history state for the frontend/backend integration, and can optionally submit an oracle-signed `reportNoise` transaction to Anvil.
+- `noise_monitor.html`: Standalone browser graph for live `estimatedDb`, `decibels`, and `noiseLevel`.
 - `send_sample_payload.py`: Laptop-side Pico W payload simulator. Use this when the real Pico W is not available.
 - `blink.py`: Pico W LED test.
 
@@ -24,6 +25,16 @@ Keep `SENSOR_MODE = "simulation"` while testing without the microphone. Change i
 ```python
 SENSOR_MODE = "inmp441"
 ```
+
+Current monitoring behavior:
+
+- The Pico posts data every `0.1` seconds.
+- `estimated_db` is the live microphone-derived dB estimate for display.
+- `noise_level` is a normalized 0-100 microphone intensity value.
+- `raw_peak_i2s` is the raw I2S peak value for debugging.
+- `peak_decibel` is the reporting value used by the backend/contract.
+- Short spikes are clamped below the threshold for `peak_decibel`.
+- A real violation is reported only after `estimated_db >= 75` for `5` continuous seconds.
 
 Run from the computer while the Pico W is connected:
 
@@ -83,6 +94,8 @@ The response should include:
 "source": "inmp441"
 ```
 
+To view the live graph, open `hardware/noise_monitor.html` in a browser while the backend is running. It polls `GET /noise/latest` every `100ms`.
+
 ## Backend Oracle Relay
 
 Run:
@@ -99,9 +112,14 @@ The relay listens on port `8000` and accepts the same JSON that the Pico W sends
   "timestamp": 1779611806,
   "violation_details": {
     "culprit_room": "Room A",
-    "peak_decibel": 82,
-    "duration_seconds": 5,
-    "source": "simulation"
+    "peak_decibel": 74,
+    "estimated_db": 92,
+    "noise_level": 88,
+    "raw_peak_i2s": 123456,
+    "duration_seconds": 0.1,
+    "source": "inmp441",
+    "event_type": "monitoring",
+    "violation_required_seconds": 5
   }
 }
 ```

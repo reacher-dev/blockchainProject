@@ -4,6 +4,12 @@ import { connectWallet, signAsOracle, ROOM_NAMES, CONTRACT_ADDRESS, fmt } from "
 const C = { bg: "#fdfbf7", text: "#433d3c", sage: "#6b705c", border: "#e8e5df", card: "#ffffff", muted: "#9b9590" };
 const SENSOR_API_URL = import.meta.env.VITE_SENSOR_API_URL || "http://127.0.0.1:8000";
 
+function sensorDb(data) {
+  if (!data) return null;
+  const value = data.estimatedDb ?? data.estimated_db ?? data.decibels;
+  return Number(value);
+}
+
 export default function App() {
   const [contract, setContract] = useState(null);
   const [provider, setProvider] = useState(null);
@@ -25,6 +31,10 @@ export default function App() {
   const [dbHistory, setDbHistory] = useState(Array(30).fill(42));
   const [backendNoise, setBackendNoise] = useState(null);
   const lastBackendTimestamp = useRef(null);
+  const lastChainSyncTimestamp = useRef(null);
+  const contractRef = useRef(null);
+  const providerRef = useRef(null);
+  const accountRef = useRef(null);
 
   const [appealVid, setAppealVid] = useState("");
   const [appealReason, setAppealReason] = useState("");
@@ -53,12 +63,25 @@ export default function App() {
 
         setBackendNoise(data);
 
+        const currentDb = sensorDb(data);
+
         if (data.timestamp !== lastBackendTimestamp.current) {
           lastBackendTimestamp.current = data.timestamp;
-          setDbHistory(h => [...h.slice(1), Number(data.decibels)]);
+          if (Number.isFinite(currentDb)) setDbHistory(h => [...h.slice(1), currentDb]);
           if (data.reportAllowed) {
             setFlashRoom(Number(data.roomIndex));
             setTimeout(() => setFlashRoom(null), 2000);
+          }
+
+          if (
+            data.onchain?.submitted &&
+            data.timestamp !== lastChainSyncTimestamp.current &&
+            contractRef.current
+          ) {
+            lastChainSyncTimestamp.current = data.timestamp;
+            setTimeout(() => {
+              loadAll(contractRef.current, providerRef.current, accountRef.current);
+            }, 900);
           }
         }
       } catch {
@@ -67,12 +90,18 @@ export default function App() {
     }
 
     loadBackendNoise();
-    const id = setInterval(loadBackendNoise, 1000);
+    const id = setInterval(loadBackendNoise, 200);
     return () => {
       cancelled = true;
       clearInterval(id);
     };
   }, []);
+
+  useEffect(() => {
+    contractRef.current = contract;
+    providerRef.current = provider;
+    accountRef.current = account;
+  }, [contract, provider, account]);
 
   async function handleConnect() {
     try {
@@ -203,7 +232,8 @@ export default function App() {
   const dbMax = 110, dbMin = 30, svgW = 500, svgH = 80;
   const pts = dbHistory.map((v, i) => `${(i / (dbHistory.length - 1)) * svgW},${svgH - ((v - dbMin) / (dbMax - dbMin)) * svgH}`).join(" ");
   const threshold70y = svgH - ((70 - dbMin) / (dbMax - dbMin)) * svgH;
-  const lastDb = dbHistory[dbHistory.length - 1];
+  const liveDb = sensorDb(backendNoise);
+  const lastDb = Number.isFinite(liveDb) ? liveDb : dbHistory[dbHistory.length - 1];
 
   const inp = { padding: "9px 12px", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 13, background: C.card, color: C.text, width: "100%", boxSizing: "border-box" };
   const btn = (bg = "#433d3c") => ({ padding: "10px 18px", background: bg, color: "#fff", border: "none", borderRadius: 9, fontWeight: 700, fontSize: 13, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1 });
@@ -293,7 +323,7 @@ export default function App() {
                   <div style={{ marginTop: 12, paddingTop: 10, borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", gap: 12, fontSize: 12 }}>
                     <span style={{ color: C.muted }}>Backend Sensor</span>
                     <span style={{ color: backendNoise.reportAllowed ? "#dc2626" : C.sage, fontWeight: 700 }}>
-                      {backendNoise.roomLabel} · {backendNoise.decibels} dB · {backendNoise.source}
+                      {backendNoise.roomLabel} · {sensorDb(backendNoise)?.toFixed(0)} dB · level {backendNoise.noiseLevel ?? "--"} · {backendNoise.eventType ?? "event"} · {backendNoise.source}
                     </span>
                   </div>
                 )}

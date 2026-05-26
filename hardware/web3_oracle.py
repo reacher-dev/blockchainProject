@@ -72,6 +72,11 @@ def normalize_violation(validated_data):
         "roomIndex": room_index,
         "roomLabel": f"Room {chr(ord('A') + room_index)}",
         "decibels": decibels,
+        "estimatedDb": details.get("estimated_db", decibels),
+        "noiseLevel": details.get("noise_level"),
+        "rawPeakI2s": details.get("raw_peak_i2s"),
+        "eventType": details.get("event_type", "violation" if report_allowed else "monitoring"),
+        "violationRequiredSeconds": details.get("violation_required_seconds"),
         "durationSeconds": details["duration_seconds"],
         "source": details["source"],
         "reportAllowed": report_allowed,
@@ -172,6 +177,11 @@ def validate_noise_violation(data):
     peak_decibel = details.get("peak_decibel")
     duration_seconds = details.get("duration_seconds")
     source = details.get("source", "unknown")
+    estimated_db = details.get("estimated_db", peak_decibel)
+    noise_level = details.get("noise_level")
+    raw_peak_i2s = details.get("raw_peak_i2s")
+    event_type = details.get("event_type", "unknown")
+    violation_required_seconds = details.get("violation_required_seconds")
 
     if not isinstance(culprit_room, str) or not culprit_room:
         raise ValueError("violation_details.culprit_room must be a non-empty string")
@@ -185,12 +195,32 @@ def validate_noise_violation(data):
     if not isinstance(source, str):
         raise ValueError("violation_details.source must be a string when provided")
 
+    if not isinstance(estimated_db, (int, float)):
+        raise ValueError("violation_details.estimated_db must be a number when provided")
+
+    if noise_level is not None and not isinstance(noise_level, (int, float)):
+        raise ValueError("violation_details.noise_level must be a number when provided")
+
+    if raw_peak_i2s is not None and not isinstance(raw_peak_i2s, int):
+        raise ValueError("violation_details.raw_peak_i2s must be an integer when provided")
+
+    if not isinstance(event_type, str):
+        raise ValueError("violation_details.event_type must be a string when provided")
+
+    if violation_required_seconds is not None and not isinstance(violation_required_seconds, (int, float)):
+        raise ValueError("violation_details.violation_required_seconds must be a number when provided")
+
     return {
         "device_id": device_id,
         "timestamp": timestamp,
         "violation_details": {
             "culprit_room": culprit_room,
             "peak_decibel": peak_decibel,
+            "estimated_db": estimated_db,
+            "noise_level": noise_level,
+            "raw_peak_i2s": raw_peak_i2s,
+            "event_type": event_type,
+            "violation_required_seconds": violation_required_seconds,
             "duration_seconds": duration_seconds,
             "source": source,
         },
@@ -268,8 +298,20 @@ class OracleRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
 
-            validated_data = validate_noise_violation(incoming_data)
-            noise_event = normalize_violation(validated_data)
+            try:
+                validated_data = validate_noise_violation(incoming_data)
+                noise_event = normalize_violation(validated_data)
+            except ValueError as exc:
+                self._send_json(
+                    400,
+                    {
+                        "status": "error",
+                        "message": "Invalid noise payload",
+                        "detail": str(exc),
+                    },
+                )
+                return
+
             onchain = {
                 "submitted": False,
                 "reason": "ORACLE_SUBMIT_ONCHAIN is not enabled",
@@ -297,6 +339,10 @@ class OracleRequestHandler(BaseHTTPRequestHandler):
             print(f"  timestamp: {validated_data['timestamp']}")
             print(f"  culprit_room: {details['culprit_room']}")
             print(f"  peak_decibel: {details['peak_decibel']}")
+            print(f"  estimated_db: {details['estimated_db']}")
+            print(f"  noise_level: {details['noise_level']}")
+            print(f"  raw_peak_i2s: {details['raw_peak_i2s']}")
+            print(f"  event_type: {details['event_type']}")
             print(f"  duration_seconds: {details['duration_seconds']}")
             print(f"  source: {details['source']}")
             print(f"  normalized_room_index: {noise_event['roomIndex']}")
