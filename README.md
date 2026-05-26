@@ -13,6 +13,64 @@
 - **DeFi**：RentEscrow 智慧合約管理保證金，自動扣款與 1/N 補償
 - **DAO**：房客投票決定申訴是否成立，超過 60% 贊成則退款
 
+## 技術架構圖
+
+```mermaid
+flowchart LR
+    subgraph Hardware["Hardware / DePIN"]
+        Mic["INMP441 I2S Microphone"]
+        Pico["Raspberry Pi Pico W\nMicroPython"]
+        Sim["send_sample_payload.py\nHardware-free simulator"]
+    end
+
+    subgraph Backend["Backend Oracle Relay"]
+        Relay["hardware/web3_oracle.py\nPython HTTP Server"]
+        Latest["GET /noise/latest\nGET /noise/history"]
+        Signer["Oracle signer\nWeb3.py + eth-account"]
+    end
+
+    subgraph Chain["Local Blockchain"]
+        Anvil["Anvil\nChain ID 31337"]
+        Contract["RentEscrow.sol\nreportNoise / deposit / appeal / vote"]
+    end
+
+    subgraph Frontend["Frontend"]
+        React["React + Vite UI"]
+        Wallet["MetaMask\nethers.js"]
+    end
+
+    Mic --> Pico
+    Pico -- "POST Pico payload" --> Relay
+    Sim -- "POST same payload" --> Relay
+    Relay --> Latest
+    React -- "poll sensor state" --> Latest
+    Relay -- "optional signed reportNoise tx" --> Signer
+    Signer --> Anvil
+    Wallet --> Anvil
+    Anvil --> Contract
+    React -- "read contract state / send user tx" --> Contract
+```
+
+## Flow Chart
+
+```mermaid
+flowchart TD
+    A["Noise detected by INMP441\nor simulated by send_sample_payload.py"] --> B["Pico W builds JSON payload"]
+    B --> C["POST /noise/ingest\nBackend Oracle Relay"]
+    C --> D["Validate payload\nand map room to roomIndex"]
+    D --> E{"decibels > 70?"}
+    E -- "No" --> F["Store latest/history\nreportAllowed = false"]
+    E -- "Yes" --> G["Store latest/history\nreportAllowed = true"]
+    G --> H{"ORACLE_SUBMIT_ONCHAIN=1?"}
+    H -- "No" --> I["Frontend polls /noise/latest\nand shows backend violation state"]
+    H -- "Yes" --> J["Relay reads reportNonce\nsigns oracle message"]
+    J --> K["Submit reportNoise(roomIndex, decibels, nonce, signature)"]
+    K --> L["RentEscrow applies penalty\nand locks rewards"]
+    L --> M["Frontend reads contract events/state"]
+    M --> N["Tenant can create appeal\nDAO votes and executes result"]
+    F --> I
+```
+
 ## 技術
 
 | 層 | 技術 |

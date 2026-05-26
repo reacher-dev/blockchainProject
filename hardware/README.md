@@ -8,7 +8,6 @@ This folder contains the Raspberry Pi Pico W and Windows relay prototype for the
 - `web3_oracle.py`: Python HTTP relay that receives Pico W POST requests, validates JSON, keeps latest/history state for the frontend/backend integration, and can optionally submit an oracle-signed `reportNoise` transaction to Anvil.
 - `send_sample_payload.py`: Laptop-side Pico W payload simulator. Use this when the real Pico W is not available.
 - `blink.py`: Pico W LED test.
-- `sfm27_buzzer.py`: SFM-27-W buzzer test. Use a transistor or MOSFET driver for proper buzzer control.
 
 ## Pico W Setup
 
