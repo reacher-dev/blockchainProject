@@ -4,7 +4,7 @@ import rp2
 import time
 import ujson
 import urequests
-from machine import ADC
+from machine import I2S, Pin
 
 
 SSID = "YOUR_WIFI_NAME"
@@ -14,9 +14,16 @@ ORACLE_URL = "http://YOUR_WINDOWS_IP:8000/"
 DEVICE_ID = "pico-w-001"
 CULPRIT_ROOM = "Room A"
 POST_INTERVAL_SECONDS = 5
-SENSOR_MODE = "simulation"  # Use "microphone" after the MAX9814 is connected.
-MICROPHONE_ADC_PIN = 26
+SENSOR_MODE = "simulation"  # Use "inmp441" after the I2S microphone is connected.
 VIOLATION_DECIBEL_THRESHOLD = 75
+
+# INMP441 I2S wiring. Change these pins if your Pico W wiring is different.
+INMP441_I2S_ID = 0
+INMP441_SCK_PIN = 10  # INMP441 SCK / BCLK
+INMP441_WS_PIN = 11   # INMP441 WS / LRCL
+INMP441_SD_PIN = 12   # INMP441 SD / DOUT
+INMP441_SAMPLE_RATE = 16000
+INMP441_BUFFER_SIZE = 4096
 
 
 WIFI_STATUS_MESSAGES = {
@@ -27,6 +34,8 @@ WIFI_STATUS_MESSAGES = {
     network.STAT_CONNECT_FAIL: "connection failed",
     network.STAT_GOT_IP: "connected",
 }
+
+microphone_i2s = None
 
 
 def connect_wifi():
@@ -87,35 +96,60 @@ def get_simulated_noise_reading(counter):
     }
 
 
-def get_microphone_noise_reading():
+def get_inmp441_noise_reading():
     """
-    Future MAX9814 integration point.
+    INMP441 digital I2S microphone integration point.
 
     Hardware wiring:
-      MAX9814 VDD -> Pico 3V3(OUT)
-      MAX9814 GND -> Pico GND
-      MAX9814 OUT -> Pico GP26 / ADC0
+      INMP441 VDD -> Pico 3V3(OUT)
+      INMP441 GND -> Pico GND
+      INMP441 SCK -> Pico GP10
+      INMP441 WS  -> Pico GP11
+      INMP441 SD  -> Pico GP12
+      INMP441 L/R -> GND
 
-    This starter implementation reads ADC values and converts them to a rough
-    noise score. True decibel calibration needs a reference sound meter.
+    This starter implementation reads signed 32-bit I2S samples and converts
+    the peak level to a rough noise score. True dB SPL calibration needs a
+    reference sound meter and a calibration offset.
     """
-    microphone = ADC(MICROPHONE_ADC_PIN)
-    peak_adc = 0
-    sample_count = 80
+    global microphone_i2s
 
-    for _ in range(sample_count):
-        sample = microphone.read_u16()
-        if sample > peak_adc:
-            peak_adc = sample
-        time.sleep_ms(10)
+    if microphone_i2s is None:
+        microphone_i2s = I2S(
+            INMP441_I2S_ID,
+            sck=Pin(INMP441_SCK_PIN),
+            ws=Pin(INMP441_WS_PIN),
+            sd=Pin(INMP441_SD_PIN),
+            mode=I2S.RX,
+            bits=32,
+            format=I2S.MONO,
+            rate=INMP441_SAMPLE_RATE,
+            ibuf=INMP441_BUFFER_SIZE,
+        )
 
-    rough_decibel = int(40 + (peak_adc / 65535) * 60)
+    sample_bytes = bytearray(INMP441_BUFFER_SIZE)
+    bytes_read = microphone_i2s.readinto(sample_bytes)
+
+    peak = 0
+    for offset in range(0, bytes_read - 3, 4):
+        sample = int.from_bytes(sample_bytes[offset : offset + 4], "little", True)
+        absolute = abs(sample)
+        if absolute > peak:
+            peak = absolute
+
+    # Rough, uncalibrated mapping for demo thresholding. Calibrate this with a
+    # real sound meter before treating it as dB SPL.
+    normalized_peak = min(peak / 2147483648, 1)
+    rough_decibel = int(35 + normalized_peak * 75)
+
+    if rough_decibel < 35:
+        rough_decibel = 35
 
     return {
         "peak_decibel": rough_decibel,
         "duration_seconds": 1,
-        "source": "microphone",
-        "raw_peak_adc": peak_adc,
+        "source": "inmp441",
+        "raw_peak_i2s": peak,
     }
 
 
@@ -123,8 +157,8 @@ def get_noise_reading(counter):
     if SENSOR_MODE == "simulation":
         return get_simulated_noise_reading(counter)
 
-    if SENSOR_MODE == "microphone":
-        return get_microphone_noise_reading()
+    if SENSOR_MODE == "inmp441":
+        return get_inmp441_noise_reading()
 
     raise ValueError("Unknown SENSOR_MODE: {}".format(SENSOR_MODE))
 

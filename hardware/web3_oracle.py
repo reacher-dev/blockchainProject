@@ -1,34 +1,153 @@
+import os
+import time
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 
 
 HOST = "0.0.0.0"
-PORT = 8000
+PORT = int(os.getenv("ORACLE_PORT", "8000"))
+NOISE_THRESHOLD_DB = 70
+AUTO_SUBMIT_ONCHAIN = os.getenv("ORACLE_SUBMIT_ONCHAIN", "0") == "1"
+RPC_URL = os.getenv("ORACLE_RPC_URL", "http://127.0.0.1:8545")
+ORACLE_PRIVATE_KEY = os.getenv(
+    "ORACLE_PRIVATE_KEY",
+    # Anvil account #1, matching script/Deploy.s.sol's default oracle address.
+    "0x59c6995e998f97a5a0044966f0945389dc9e86dae88c7a8412f4603b6b78690d",
+)
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+CONTRACT_JSON_PATH = Path(
+    os.getenv("CONTRACT_JSON_PATH", PROJECT_ROOT / "frontend" / "src" / "contract.json")
+)
+
+ROOM_ALIASES = {
+    "0": 0,
+    "a": 0,
+    "room a": 0,
+    "alice": 0,
+    "1": 1,
+    "b": 1,
+    "room b": 1,
+    "bob": 1,
+    "2": 2,
+    "c": 2,
+    "room c": 2,
+    "charlie": 2,
+    "3": 3,
+    "d": 3,
+    "room d": 3,
+    "david": 3,
+    "4": 4,
+    "e": 4,
+    "room e": 4,
+    "eve": 4,
+}
+
+STATE = {
+    "latest": None,
+    "history": [],
+    "last_error": None,
+}
 
 
-def sign_data(json_data):
-    """
-    Placeholder for future Web3 oracle signing.
+def room_to_index(room_name):
+    key = str(room_name).strip().lower()
+    if key not in ROOM_ALIASES:
+        raise ValueError(
+            "violation_details.culprit_room must be one of Room A-E, A-E, 0-4, or tenant demo names"
+        )
+    return ROOM_ALIASES[key]
 
-    Future implementation idea:
-    1. Install web3/eth-account on the Windows backend:
-       pip install web3 eth-account
-    2. Serialize json_data in a deterministic way, for example:
-       payload = json.dumps(json_data, separators=(",", ":"), sort_keys=True)
-    3. Compute a keccak256 hash:
-       from web3 import Web3
-       digest = Web3.keccak(text=payload)
-    4. Sign the digest with the oracle private key:
-       from eth_account import Account
-       signed = Account._sign_hash(digest, private_key=ORACLE_PRIVATE_KEY)
-    5. Return signed.signature.hex() and submit/store it for smart contract use.
 
-    Never hard-code a real private key in this file. Load it from an environment
-    variable or a secrets manager.
-    """
+def normalize_violation(validated_data):
+    details = validated_data["violation_details"]
+    decibels = int(round(details["peak_decibel"]))
+    room_index = room_to_index(details["culprit_room"])
+    report_allowed = decibels > NOISE_THRESHOLD_DB
+
     return {
-        "algorithm": "simulated-keccak256-ecdsa",
-        "signature": "0xSIMULATED_SIGNATURE_FOR_DEVELOPMENT_ONLY",
+        "deviceId": validated_data["device_id"],
+        "timestamp": validated_data["timestamp"],
+        "receivedAt": int(time.time()),
+        "roomIndex": room_index,
+        "roomLabel": f"Room {chr(ord('A') + room_index)}",
+        "decibels": decibels,
+        "durationSeconds": details["duration_seconds"],
+        "source": details["source"],
+        "reportAllowed": report_allowed,
+        "reason": "above threshold" if report_allowed else "below threshold",
+        "raw": validated_data,
+    }
+
+
+def load_contract_config():
+    with CONTRACT_JSON_PATH.open("r", encoding="utf-8") as handle:
+        data = json.load(handle)
+    return data["address"], data["abi"]
+
+
+def submit_onchain(noise_event):
+    from eth_account import Account
+    from eth_account.messages import encode_defunct
+    from web3 import Web3
+
+    contract_address, abi = load_contract_config()
+    web3 = Web3(Web3.HTTPProvider(RPC_URL))
+    if not web3.is_connected():
+        raise RuntimeError(f"Cannot connect to RPC node at {RPC_URL}")
+
+    account = Account.from_key(ORACLE_PRIVATE_KEY)
+    contract = web3.eth.contract(address=Web3.to_checksum_address(contract_address), abi=abi)
+    chain_id = web3.eth.chain_id
+    report_nonce = contract.functions.reportNonce().call()
+
+    digest = Web3.solidity_keccak(
+        ["uint256", "address", "uint8", "uint256", "uint256"],
+        [
+            chain_id,
+            Web3.to_checksum_address(contract_address),
+            noise_event["roomIndex"],
+            noise_event["decibels"],
+            report_nonce,
+        ],
+    )
+    signature = Account.sign_message(
+        encode_defunct(primitive=digest),
+        private_key=ORACLE_PRIVATE_KEY,
+    ).signature
+
+    tx = contract.functions.reportNoise(
+        noise_event["roomIndex"],
+        noise_event["decibels"],
+        report_nonce,
+        signature,
+    ).build_transaction(
+        {
+            "from": account.address,
+            "chainId": chain_id,
+            "nonce": web3.eth.get_transaction_count(account.address),
+            "gas": 500000,
+            "gasPrice": web3.eth.gas_price,
+        }
+    )
+
+    signed_tx = account.sign_transaction(tx)
+    raw_transaction = getattr(signed_tx, "raw_transaction", None)
+    if raw_transaction is None:
+        raw_transaction = signed_tx.rawTransaction
+    tx_hash = web3.eth.send_raw_transaction(raw_transaction)
+    receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
+
+    return {
+        "submitted": True,
+        "chainId": chain_id,
+        "contractAddress": contract_address,
+        "oracleAddress": account.address,
+        "reportNonce": report_nonce,
+        "signature": signature.hex(),
+        "txHash": tx_hash.hex(),
+        "blockNumber": receipt.blockNumber,
+        "status": receipt.status,
     }
 
 
@@ -79,18 +198,53 @@ def validate_noise_violation(data):
 
 
 class OracleRequestHandler(BaseHTTPRequestHandler):
+    def _send_cors_headers(self):
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+
     def _send_json(self, status_code, body):
         response = json.dumps(body).encode("utf-8")
 
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json")
+        self._send_cors_headers()
         self.send_header("Content-Length", str(len(response)))
         self.end_headers()
         self.wfile.write(response)
 
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self._send_cors_headers()
+        self.end_headers()
+
+    def do_GET(self):
+        if self.path == "/health":
+            self._send_json(
+                200,
+                {
+                    "status": "ok",
+                    "submitOnchain": AUTO_SUBMIT_ONCHAIN,
+                    "rpcUrl": RPC_URL,
+                    "contractJson": str(CONTRACT_JSON_PATH),
+                    "lastError": STATE["last_error"],
+                },
+            )
+            return
+
+        if self.path == "/noise/latest":
+            self._send_json(200, {"status": "success", "data": STATE["latest"]})
+            return
+
+        if self.path == "/noise/history":
+            self._send_json(200, {"status": "success", "data": STATE["history"][-50:]})
+            return
+
+        self._send_json(404, {"status": "error", "message": "Not found"})
+
     def do_POST(self):
         try:
-            if self.path != "/":
+            if self.path not in ("/", "/noise/ingest"):
                 self._send_json(404, {"status": "error", "message": "Not found"})
                 return
 
@@ -115,7 +269,27 @@ class OracleRequestHandler(BaseHTTPRequestHandler):
                 return
 
             validated_data = validate_noise_violation(incoming_data)
-            signature_info = sign_data(validated_data)
+            noise_event = normalize_violation(validated_data)
+            onchain = {
+                "submitted": False,
+                "reason": "ORACLE_SUBMIT_ONCHAIN is not enabled",
+            }
+
+            if AUTO_SUBMIT_ONCHAIN and noise_event["reportAllowed"]:
+                try:
+                    onchain = submit_onchain(noise_event)
+                    STATE["last_error"] = None
+                except Exception as exc:
+                    STATE["last_error"] = str(exc)
+                    onchain = {
+                        "submitted": False,
+                        "error": str(exc),
+                    }
+
+            noise_event["onchain"] = onchain
+            STATE["latest"] = noise_event
+            STATE["history"].append(noise_event)
+            STATE["history"] = STATE["history"][-200:]
 
             details = validated_data["violation_details"]
             print("\nReceived noise violation:")
@@ -125,13 +299,16 @@ class OracleRequestHandler(BaseHTTPRequestHandler):
             print(f"  peak_decibel: {details['peak_decibel']}")
             print(f"  duration_seconds: {details['duration_seconds']}")
             print(f"  source: {details['source']}")
-            print(f"  signature: {signature_info['signature']}")
+            print(f"  normalized_room_index: {noise_event['roomIndex']}")
+            print(f"  report_allowed: {noise_event['reportAllowed']}")
+            print(f"  onchain: {onchain}")
 
             self._send_json(
                 200,
                 {
                     "status": "success",
-                    "message": "Oracle received and signed",
+                    "message": "Oracle received Pico W noise payload",
+                    "data": noise_event,
                 },
             )
 
