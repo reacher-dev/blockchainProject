@@ -75,6 +75,74 @@ pip install web3 eth-account
 ORACLE_SUBMIT_ONCHAIN=1 ORACLE_RPC_URL=http://127.0.0.1:8545 python3 hardware/web3_oracle.py
 ```
 
+### Frontend 測試方式（不需要硬體）
+
+負責前端的人不需要 Pico W 或 INMP441 就可以測試硬體資料流程。測試時把 `hardware/send_sample_payload.py` 當成假的 Pico W，它送出的 JSON 格式會和真實 Pico W 一樣。
+
+測試流程：
+
+1. 啟動 Backend Oracle Relay：
+
+```bash
+python3 hardware/web3_oracle.py
+```
+
+2. 另一個 terminal 送出一筆假的 Pico W 噪音資料：
+
+```bash
+python3 hardware/send_sample_payload.py --room "Room A" --decibels 82
+```
+
+3. 前端讀取 latest sensor state：
+
+```bash
+curl http://127.0.0.1:8000/noise/latest
+```
+
+前端可以直接 poll 這個 API：
+
+```js
+const res = await fetch("http://127.0.0.1:8000/noise/latest");
+const json = await res.json();
+console.log(json.data);
+```
+
+回傳格式範例：
+
+```json
+{
+  "status": "success",
+  "data": {
+    "deviceId": "pico-w-001",
+    "roomIndex": 0,
+    "roomLabel": "Room A",
+    "decibels": 82,
+    "durationSeconds": 5,
+    "source": "simulation",
+    "reportAllowed": true,
+    "reason": "above threshold"
+  }
+}
+```
+
+前端需要看的主要欄位：
+
+- `roomIndex`：合約使用的房間 index，`0` 到 `4`
+- `roomLabel`：顯示用房間名稱，例如 `Room A`
+- `decibels`：目前偵測到的分貝
+- `source`：`simulation` 代表測試 payload，`inmp441` 代表真實麥克風 payload
+- `reportAllowed`：是否超過噪音門檻，可用來決定 UI 是否顯示違規狀態
+- `reason`：判斷原因，例如 `above threshold`
+
+可用 API：
+
+```text
+GET  http://127.0.0.1:8000/health
+GET  http://127.0.0.1:8000/noise/latest
+GET  http://127.0.0.1:8000/noise/history
+POST http://127.0.0.1:8000/noise/ingest
+```
+
 ### 6. Pico W / INMP441 設定
 
 在 `hardware/pico_noise_sender.py` 設定 Wi-Fi 與後端位置：
