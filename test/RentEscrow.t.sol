@@ -362,16 +362,16 @@ contract RentEscrowTest is Test {
         vm.prank(tenantAddrs[3]); escrow.withdraw();
 
         // Vote: 3 yes → meets quorum (3) and 60% threshold
-        vm.prank(tenantAddrs[1]); escrow.vote(pid, true);
-        vm.prank(tenantAddrs[2]); escrow.vote(pid, true);
-        vm.prank(landlord);       escrow.vote(pid, true);
+        vm.prank(tenantAddrs[1]); escrow.vote(pid, true, 1);
+        vm.prank(tenantAddrs[2]); escrow.vote(pid, true, 1);
+        vm.prank(landlord);       escrow.vote(pid, true, 1);
 
         vm.warp(block.timestamp + 25 hours);
 
         // This must NOT revert (was the underflow bug)
         escrow.executeProposal(pid);
 
-        (,,,,, bool executed, bool passed) = escrow.proposals(pid);
+        (,,,,,, bool executed, bool passed) = escrow.proposals(pid);
         assertTrue(executed);
         assertTrue(passed);
 
@@ -392,8 +392,8 @@ contract RentEscrowTest is Test {
         (, uint256 pid) = _setupAppeal(0, 80);
 
         // Only 2 votes cast — below VOTE_QUORUM (3)
-        vm.prank(tenantAddrs[1]); escrow.vote(pid, true);
-        vm.prank(tenantAddrs[2]); escrow.vote(pid, true);
+        vm.prank(tenantAddrs[1]); escrow.vote(pid, true, 1);
+        vm.prank(tenantAddrs[2]); escrow.vote(pid, true, 1);
 
         vm.warp(block.timestamp + 25 hours);
         vm.expectRevert(RentEscrow.QuorumNotReached.selector);
@@ -404,14 +404,14 @@ contract RentEscrowTest is Test {
         (, uint256 pid) = _setupAppeal(0, 80);
 
         // 3 yes votes — meets quorum (3) and 100% > 60%
-        vm.prank(tenantAddrs[1]); escrow.vote(pid, true);
-        vm.prank(tenantAddrs[2]); escrow.vote(pid, true);
-        vm.prank(tenantAddrs[3]); escrow.vote(pid, true);
+        vm.prank(tenantAddrs[1]); escrow.vote(pid, true, 1);
+        vm.prank(tenantAddrs[2]); escrow.vote(pid, true, 1);
+        vm.prank(tenantAddrs[3]); escrow.vote(pid, true, 1);
 
         vm.warp(block.timestamp + 25 hours);
         escrow.executeProposal(pid);
 
-        (,,,,, bool executed, bool passed) = escrow.proposals(pid);
+        (,,,,,, bool executed, bool passed) = escrow.proposals(pid);
         assertTrue(executed);
         assertTrue(passed);
     }
@@ -420,16 +420,16 @@ contract RentEscrowTest is Test {
         (, uint256 pid) = _setupAppeal(0, 80);
 
         // Eligible voters are the 4 non-appellant tenants + landlord.
-        vm.prank(tenantAddrs[1]); escrow.vote(pid, true);
-        vm.prank(tenantAddrs[2]); escrow.vote(pid, true);
-        vm.prank(tenantAddrs[3]); escrow.vote(pid, true);
-        vm.prank(tenantAddrs[4]); escrow.vote(pid, true);
-        vm.prank(landlord);       escrow.vote(pid, true);
+        vm.prank(tenantAddrs[1]); escrow.vote(pid, true, 1);
+        vm.prank(tenantAddrs[2]); escrow.vote(pid, true, 1);
+        vm.prank(tenantAddrs[3]); escrow.vote(pid, true, 1);
+        vm.prank(tenantAddrs[4]); escrow.vote(pid, true, 1);
+        vm.prank(landlord);       escrow.vote(pid, true, 1);
 
         // No time warp: all eligible voters are done, so early execution is allowed.
         escrow.executeProposal(pid);
 
-        (,,,,, bool executed, bool passed) = escrow.proposals(pid);
+        (,,,,,, bool executed, bool passed) = escrow.proposals(pid);
         assertTrue(executed);
         assertTrue(passed);
     }
@@ -440,7 +440,7 @@ contract RentEscrowTest is Test {
         (, uint256 pid) = _setupAppeal(0, 80);
 
         vm.prank(landlord);
-        escrow.vote(pid, true);
+        escrow.vote(pid, true, 1);
 
         (uint256 yes,) = escrow.getVotes(pid);
         assertEq(yes, 1);
@@ -450,9 +450,9 @@ contract RentEscrowTest is Test {
         (, uint256 pid) = _setupAppeal(0, 80);
 
         // 2 tenants + landlord = 3 votes → meets quorum
-        vm.prank(tenantAddrs[1]); escrow.vote(pid, true);
-        vm.prank(tenantAddrs[2]); escrow.vote(pid, true);
-        vm.prank(landlord);       escrow.vote(pid, true);
+        vm.prank(tenantAddrs[1]); escrow.vote(pid, true, 1);
+        vm.prank(tenantAddrs[2]); escrow.vote(pid, true, 1);
+        vm.prank(landlord);       escrow.vote(pid, true, 1);
 
         vm.warp(block.timestamp + 25 hours);
         escrow.executeProposal(pid); // must not revert QuorumNotReached
@@ -463,7 +463,7 @@ contract RentEscrowTest is Test {
         address stranger = makeAddr("stranger");
         vm.prank(stranger);
         vm.expectRevert(RentEscrow.NotEligibleToVote.selector);
-        escrow.vote(pid, true);
+        escrow.vote(pid, true, 1);
     }
 
     // ─── 9. Fix 5 — Minimum Deposit Helper ───────────────────────────────────────
@@ -488,9 +488,9 @@ contract RentEscrowTest is Test {
         uint256 rewardEach = escrow.PENALTY_LOW() / 4;
 
         // 3 no votes — quorum met, appeal fails
-        vm.prank(tenantAddrs[1]); escrow.vote(pid, false);
-        vm.prank(tenantAddrs[2]); escrow.vote(pid, false);
-        vm.prank(tenantAddrs[3]); escrow.vote(pid, false);
+        vm.prank(tenantAddrs[1]); escrow.vote(pid, false, 1);
+        vm.prank(tenantAddrs[2]); escrow.vote(pid, false, 1);
+        vm.prank(tenantAddrs[3]); escrow.vote(pid, false, 1);
 
         vm.warp(block.timestamp + 25 hours);
         escrow.executeProposal(pid);
@@ -505,17 +505,17 @@ contract RentEscrowTest is Test {
 
     function test_RevertWhen_DoubleVote() public {
         (, uint256 pid) = _setupAppeal(0, 80);
-        vm.prank(tenantAddrs[1]); escrow.vote(pid, true);
+        vm.prank(tenantAddrs[1]); escrow.vote(pid, true, 1);
         vm.prank(tenantAddrs[1]);
         vm.expectRevert(RentEscrow.AlreadyVoted.selector);
-        escrow.vote(pid, true);
+        escrow.vote(pid, true, 1);
     }
 
     function test_RevertWhen_AppellantVotes() public {
         (, uint256 pid) = _setupAppeal(0, 80);
         vm.prank(tenantAddrs[0]); // appellant
         vm.expectRevert(RentEscrow.AppellantCannotVote.selector);
-        escrow.vote(pid, true);
+        escrow.vote(pid, true, 1);
     }
 
     function test_RevertWhen_VotingStillOpen() public {
@@ -542,5 +542,84 @@ contract RentEscrowTest is Test {
         vm.prank(tenantAddrs[1]); // not the penalized room
         vm.expectRevert(RentEscrow.NotThePenalizedTenant.selector);
         escrow.createAppeal(vid, "Not my fault");
+    }
+
+    // ─── 11. Quadratic Voting ─────────────────────────────────────────────────────
+
+    function test_QV_VoteCountAccumulatesAsUnits() public {
+        (, uint256 pid) = _setupAppeal(0, 80);
+
+        // Bob votes 2 (costs 4 credits), Charlie votes 3 (costs 9 credits)
+        vm.prank(tenantAddrs[1]); escrow.vote(pid, true,  2); // yes += 2
+        vm.prank(tenantAddrs[2]); escrow.vote(pid, false, 3); // no  += 3
+
+        (uint256 yes, uint256 no) = escrow.getVotes(pid);
+        assertEq(yes, 2);
+        assertEq(no,  3);
+    }
+
+    function test_QV_CreditsUsedRecorded() public {
+        (, uint256 pid) = _setupAppeal(0, 80);
+
+        vm.prank(tenantAddrs[1]); escrow.vote(pid, true, 2); // cost = 4
+        assertEq(escrow.creditsUsed(pid, tenantAddrs[1]), 4);
+    }
+
+    function test_QV_YesWinsWithMoreUnits() public {
+        (, uint256 pid) = _setupAppeal(0, 80);
+
+        // yes = 2 + 2 = 4, no = 1 + 1 = 2 → yes wins
+        vm.prank(tenantAddrs[1]); escrow.vote(pid, true,  2);
+        vm.prank(tenantAddrs[2]); escrow.vote(pid, true,  2);
+        vm.prank(tenantAddrs[3]); escrow.vote(pid, false, 1);
+
+        vm.warp(block.timestamp + 25 hours);
+        escrow.executeProposal(pid);
+
+        (,,,,,, bool executed, bool passed) = escrow.proposals(pid);
+        assertTrue(executed);
+        assertTrue(passed); // yes > no → appeal passes
+    }
+
+    function test_QV_NoWinsWithMoreUnits() public {
+        (, uint256 pid) = _setupAppeal(0, 80);
+
+        // yes = 1, no = 1 + 3 = 4 → no wins
+        vm.prank(tenantAddrs[1]); escrow.vote(pid, true,  1);
+        vm.prank(tenantAddrs[2]); escrow.vote(pid, false, 1);
+        vm.prank(tenantAddrs[3]); escrow.vote(pid, false, 3);
+
+        vm.warp(block.timestamp + 25 hours);
+        escrow.executeProposal(pid);
+
+        (,,,,,, bool executed, bool passed) = escrow.proposals(pid);
+        assertTrue(executed);
+        assertFalse(passed); // no > yes → appeal fails
+    }
+
+    function test_QV_RevertWhen_InvalidVoteCount_Zero() public {
+        (, uint256 pid) = _setupAppeal(0, 80);
+        vm.prank(tenantAddrs[1]);
+        vm.expectRevert(RentEscrow.InvalidVoteCount.selector);
+        escrow.vote(pid, true, 0);
+    }
+
+    function test_QV_RevertWhen_InvalidVoteCount_TooHigh() public {
+        (, uint256 pid) = _setupAppeal(0, 80);
+        vm.prank(tenantAddrs[1]);
+        vm.expectRevert(RentEscrow.InvalidVoteCount.selector);
+        escrow.vote(pid, true, 4); // 4² = 16 > VOICE_CREDITS(9)
+    }
+
+    function test_QV_EarlyExecution_UsesVoterCount() public {
+        (, uint256 pid) = _setupAppeal(0, 80);
+
+        // One voter with 3 votes contributes 3 vote-units but voterCount = 1,
+        // so it should NOT trigger early execution for all 5 eligible voters.
+        vm.prank(tenantAddrs[1]); escrow.vote(pid, true, 3);
+
+        // 4 more eligible voters haven't voted → still open
+        vm.expectRevert(RentEscrow.VotingStillOpen.selector);
+        escrow.executeProposal(pid);
     }
 }

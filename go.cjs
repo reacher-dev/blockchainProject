@@ -18,4 +18,4 @@ const output = {
 
 const outDir = path.join(__dirname, "frontend/src");
 fs.writeFileSync(path.join(outDir, "contract.json"), JSON.stringify(output, null, 2));
-console.log("✅ contract.json 已產生，合約地址：", contractAddress);
+console.log("contract.json 已產生，合約地址：", contractAddress);

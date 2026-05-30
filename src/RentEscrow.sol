@@ -32,8 +32,9 @@ contract RentEscrow is ReentrancyGuard {
     uint256 public constant NOISE_THRESHOLD_DB  = 70;
     uint256 public constant APPEAL_WINDOW       = 24 hours;
     uint256 public constant APPEAL_FEE          = 0.01 ether;
-    uint256 public constant VOTE_PASS_THRESHOLD = 60;   // percent of votes cast
-    uint256 public constant VOTE_QUORUM         = 3;    // minimum votes that must be cast
+    uint256 public constant VOTE_PASS_THRESHOLD = 60;   // percent of votes cast (kept for reference)
+    uint256 public constant VOTE_QUORUM         = 3;    // minimum vote-units that must be cast
+    uint256 public constant VOICE_CREDITS       = 9;    // QV credits per voter per proposal
 
     // Fix 4 — tiered penalties by dB level
     uint256 public constant PENALTY_LOW  = 0.2 ether;  // 71 – 85 dB
@@ -73,6 +74,8 @@ contract RentEscrow is ReentrancyGuard {
     error VotingClosed();
     error AlreadyVoted();
     error AppellantCannotVote();
+    error InvalidVoteCount();
+    error InsufficientCredits();
     error NothingToWithdraw();
     error TransferFailed();
     error QuorumNotReached();       // Fix 2
@@ -137,15 +140,17 @@ contract RentEscrow is ReentrancyGuard {
         uint256 violationId;
         address appellant;
         uint256 createdAt;
-        uint256 yesVotes;
-        uint256 noVotes;
+        uint256 yesVotes;    // sum of yes voteCount values
+        uint256 noVotes;     // sum of no  voteCount values
+        uint256 voterCount;  // number of distinct voters (for early-execute check)
         bool    executed;
         bool    passed;
     }
 
     uint256 public proposalCount;
-    mapping(uint256 => Proposal)                 public proposals;
-    mapping(uint256 => mapping(address => bool)) public hasVoted;
+    mapping(uint256 => Proposal)                    public proposals;
+    mapping(uint256 => mapping(address => bool))    public hasVoted;
+    mapping(uint256 => mapping(address => uint256)) public creditsUsed;
 
     // ─── Events ──────────────────────────────────────────────────────────────────
 
@@ -156,7 +161,7 @@ contract RentEscrow is ReentrancyGuard {
     event PenaltyApplied(uint256 indexed violationId, uint8 offenderRoom, uint256 penaltyAmount, uint256 rewardPerTenant);
     event RewardsReleased(uint256 indexed violationId);
     event AppealCreated(uint256 indexed proposalId, uint256 violationId, address appellant, string reason);
-    event VoteCast(uint256 indexed proposalId, address voter, bool approve);
+    event VoteCast(uint256 indexed proposalId, address voter, bool approve, uint256 voteCount);
     event ProposalExecuted(uint256 indexed proposalId, bool passed);
     event OracleAdded(address indexed oracle);
     event OracleRemoved(address indexed oracle);
@@ -423,6 +428,7 @@ contract RentEscrow is ReentrancyGuard {
             createdAt:   block.timestamp,
             yesVotes:    0,
             noVotes:     0,
+            voterCount:  0,
             executed:    false,
             passed:      false
         });
@@ -431,31 +437,39 @@ contract RentEscrow is ReentrancyGuard {
     }
 
     /**
-     * @notice Cast a vote on an open appeal proposal.
+     * @notice Cast a Quadratic Vote on an open appeal proposal.
      *
      * Fix 3 — eligible voters: all registered tenants (except appellant) + landlord.
      *
-     * NOTE: In production, gate tenants on a rental NFT balance check:
-     *   require(rentalNFT.balanceOf(msg.sender) > 0, "No rental NFT");
+     * Quadratic Voting: each voter has VOICE_CREDITS (9) per proposal.
+     * Casting `voteCount` votes costs voteCount² credits.
+     * Valid values: 1 (cost 1), 2 (cost 4), 3 (cost 9).
      *
      * @param proposalId  Proposal to vote on.
      * @param approve     true = support appeal (refund), false = reject.
+     * @param voteCount   Number of votes to cast (1–3); cost = voteCount².
      */
-    function vote(uint256 proposalId, bool approve) external {
-        // Fix 3 — landlord is eligible in addition to tenants
+    function vote(uint256 proposalId, bool approve, uint256 voteCount) external {
         if (!isTenant[msg.sender] && msg.sender != landlord) revert NotEligibleToVote();
         if (proposalId >= proposalCount) revert ProposalNotFound();
 
+        uint256 cost = voteCount * voteCount;
+        if (voteCount == 0 || cost > VOICE_CREDITS) revert InvalidVoteCount();
+
         Proposal storage p = proposals[proposalId];
-        if (p.executed)                                    revert AlreadyExecuted();
-        if (block.timestamp > p.createdAt + APPEAL_WINDOW) revert VotingClosed();
-        if (hasVoted[proposalId][msg.sender])              revert AlreadyVoted();
-        if (msg.sender == p.appellant)                     revert AppellantCannotVote();
+        if (p.executed)                                     revert AlreadyExecuted();
+        if (block.timestamp > p.createdAt + APPEAL_WINDOW)  revert VotingClosed();
+        if (hasVoted[proposalId][msg.sender])               revert AlreadyVoted();
+        if (msg.sender == p.appellant)                      revert AppellantCannotVote();
+        if (creditsUsed[proposalId][msg.sender] + cost > VOICE_CREDITS) revert InsufficientCredits();
 
-        hasVoted[proposalId][msg.sender] = true;
-        if (approve) { p.yesVotes++; } else { p.noVotes++; }
+        hasVoted[proposalId][msg.sender]    = true;
+        creditsUsed[proposalId][msg.sender] += cost;
+        p.voterCount++;
 
-        emit VoteCast(proposalId, msg.sender, approve);
+        if (approve) { p.yesVotes += voteCount; } else { p.noVotes += voteCount; }
+
+        emit VoteCast(proposalId, msg.sender, approve, voteCount);
     }
 
     /**
@@ -474,9 +488,10 @@ contract RentEscrow is ReentrancyGuard {
         Proposal storage p = proposals[proposalId];
         if (p.executed) revert AlreadyExecuted();
 
-        // Fix 2 — quorum check
+        // Quorum measured in total vote-units cast (QV semantics)
         uint256 total = p.yesVotes + p.noVotes;
-        bool allEligibleVoted = total >= tenantCount; // tenants except appellant + landlord
+        // Early execution once every eligible voter has voted (distinct-voter count)
+        bool allEligibleVoted = p.voterCount >= tenantCount;
         if (block.timestamp <= p.createdAt + APPEAL_WINDOW && !allEligibleVoted) {
             revert VotingStillOpen();
         }
@@ -484,7 +499,8 @@ contract RentEscrow is ReentrancyGuard {
 
         p.executed = true;
 
-        if ((p.yesVotes * 100) / total >= VOTE_PASS_THRESHOLD) {
+        // QV win condition: whichever side accumulated more vote-units wins
+        if (p.yesVotes > p.noVotes) {
             // Appeal passed — reverse the penalty (Fix 1: from lockedDeposit)
             p.passed = true;
             _reversePenalty(proposalId);

@@ -1,1098 +1,1161 @@
 {
-  "address": "0xe7f1725e7734ce288f8367e1bb143e90bb3f0512",
+  "address": "0x5FbDB2315678afecb367f032d93F642f64180aa3",
   "abi": [
-    {
-      "type": "constructor",
-      "inputs": [
-        {
-          "name": "initialOracle",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "APPEAL_FEE",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "APPEAL_WINDOW",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "MAX_ROOMS",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint8",
-          "internalType": "uint8"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "MINIMUM_DEPOSIT",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "NOISE_THRESHOLD_DB",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "PENALTY_HIGH",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "PENALTY_LOW",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "PENALTY_MED",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "VOTE_PASS_THRESHOLD",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "VOTE_QUORUM",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "addOracle",
-      "inputs": [
-        {
-          "name": "newOracle",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "addressToRoom",
-      "inputs": [
-        {
-          "name": "",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint8",
-          "internalType": "uint8"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "createAppeal",
-      "inputs": [
-        {
-          "name": "violationId",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "reason",
-          "type": "string",
-          "internalType": "string"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "deposit",
-      "inputs": [],
-      "outputs": [],
-      "stateMutability": "payable"
-    },
-    {
-      "type": "function",
-      "name": "executeProposal",
-      "inputs": [
-        {
-          "name": "proposalId",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "getDeposit",
-      "inputs": [
-        {
-          "name": "roomIndex",
-          "type": "uint8",
-          "internalType": "uint8"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "free",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "locked",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "getVotes",
-      "inputs": [
-        {
-          "name": "proposalId",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "yes",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "no",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "hasVoted",
-      "inputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "",
-          "type": "bool",
-          "internalType": "bool"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "isDepositSufficient",
-      "inputs": [
-        {
-          "name": "roomIndex",
-          "type": "uint8",
-          "internalType": "uint8"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "",
-          "type": "bool",
-          "internalType": "bool"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "isOracle",
-      "inputs": [
-        {
-          "name": "",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "",
-          "type": "bool",
-          "internalType": "bool"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "isTenant",
-      "inputs": [
-        {
-          "name": "",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "",
-          "type": "bool",
-          "internalType": "bool"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "landlord",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "oracleCount",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "proposalCount",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "proposals",
-      "inputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "violationId",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "appellant",
-          "type": "address",
-          "internalType": "address"
-        },
-        {
-          "name": "createdAt",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "yesVotes",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "noVotes",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "executed",
-          "type": "bool",
-          "internalType": "bool"
-        },
-        {
-          "name": "passed",
-          "type": "bool",
-          "internalType": "bool"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "registerTenant",
-      "inputs": [
-        {
-          "name": "roomIndex",
-          "type": "uint8",
-          "internalType": "uint8"
-        },
-        {
-          "name": "tenantAddr",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "releaseRewards",
-      "inputs": [
-        {
-          "name": "violationId",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "removeOracle",
-      "inputs": [
-        {
-          "name": "target",
-          "type": "address",
-          "internalType": "address"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "reportNoise",
-      "inputs": [
-        {
-          "name": "roomIndex",
-          "type": "uint8",
-          "internalType": "uint8"
-        },
-        {
-          "name": "decibels",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "nonce",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "signature",
-          "type": "bytes",
-          "internalType": "bytes"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "reportNonce",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "tenantCount",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint8",
-          "internalType": "uint8"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "tenants",
-      "inputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "addr",
-          "type": "address",
-          "internalType": "address"
-        },
-        {
-          "name": "deposit",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "lockedDeposit",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "registered",
-          "type": "bool",
-          "internalType": "bool"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "violationCount",
-      "inputs": [],
-      "outputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "violationLocks",
-      "inputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "rewardPerRecipient",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "released",
-          "type": "bool",
-          "internalType": "bool"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "violations",
-      "inputs": [
-        {
-          "name": "",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ],
-      "outputs": [
-        {
-          "name": "roomIndex",
-          "type": "uint8",
-          "internalType": "uint8"
-        },
-        {
-          "name": "decibels",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "reportedAt",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "penaltyPaid",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "appealed",
-          "type": "bool",
-          "internalType": "bool"
-        }
-      ],
-      "stateMutability": "view"
-    },
-    {
-      "type": "function",
-      "name": "vote",
-      "inputs": [
-        {
-          "name": "proposalId",
-          "type": "uint256",
-          "internalType": "uint256"
-        },
-        {
-          "name": "approve",
-          "type": "bool",
-          "internalType": "bool"
-        }
-      ],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "function",
-      "name": "withdraw",
-      "inputs": [],
-      "outputs": [],
-      "stateMutability": "nonpayable"
-    },
-    {
-      "type": "event",
-      "name": "AppealCreated",
-      "inputs": [
-        {
-          "name": "proposalId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "violationId",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "appellant",
-          "type": "address",
-          "indexed": false,
-          "internalType": "address"
-        },
-        {
-          "name": "reason",
-          "type": "string",
-          "indexed": false,
-          "internalType": "string"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "Deposited",
-      "inputs": [
-        {
-          "name": "roomIndex",
-          "type": "uint8",
-          "indexed": true,
-          "internalType": "uint8"
-        },
-        {
-          "name": "tenant",
-          "type": "address",
-          "indexed": false,
-          "internalType": "address"
-        },
-        {
-          "name": "amount",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "NoiseReported",
-      "inputs": [
-        {
-          "name": "violationId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "roomIndex",
-          "type": "uint8",
-          "indexed": false,
-          "internalType": "uint8"
-        },
-        {
-          "name": "decibels",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "penalty",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "OracleAdded",
-      "inputs": [
-        {
-          "name": "oracle",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "OracleRemoved",
-      "inputs": [
-        {
-          "name": "oracle",
-          "type": "address",
-          "indexed": true,
-          "internalType": "address"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "PenaltyApplied",
-      "inputs": [
-        {
-          "name": "violationId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "offenderRoom",
-          "type": "uint8",
-          "indexed": false,
-          "internalType": "uint8"
-        },
-        {
-          "name": "penaltyAmount",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        },
-        {
-          "name": "rewardPerTenant",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "ProposalExecuted",
-      "inputs": [
-        {
-          "name": "proposalId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "passed",
-          "type": "bool",
-          "indexed": false,
-          "internalType": "bool"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "RewardsReleased",
-      "inputs": [
-        {
-          "name": "violationId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "TenantRegistered",
-      "inputs": [
-        {
-          "name": "roomIndex",
-          "type": "uint8",
-          "indexed": true,
-          "internalType": "uint8"
-        },
-        {
-          "name": "tenant",
-          "type": "address",
-          "indexed": false,
-          "internalType": "address"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "VoteCast",
-      "inputs": [
-        {
-          "name": "proposalId",
-          "type": "uint256",
-          "indexed": true,
-          "internalType": "uint256"
-        },
-        {
-          "name": "voter",
-          "type": "address",
-          "indexed": false,
-          "internalType": "address"
-        },
-        {
-          "name": "approve",
-          "type": "bool",
-          "indexed": false,
-          "internalType": "bool"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "event",
-      "name": "Withdrawn",
-      "inputs": [
-        {
-          "name": "roomIndex",
-          "type": "uint8",
-          "indexed": true,
-          "internalType": "uint8"
-        },
-        {
-          "name": "tenant",
-          "type": "address",
-          "indexed": false,
-          "internalType": "address"
-        },
-        {
-          "name": "amount",
-          "type": "uint256",
-          "indexed": false,
-          "internalType": "uint256"
-        }
-      ],
-      "anonymous": false
-    },
-    {
-      "type": "error",
-      "name": "AlreadyAppealed",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "AlreadyExecuted",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "AlreadyRegistered",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "AlreadyVoted",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "AppealWindowClosed",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "AppealWindowStillOpen",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "AppellantCannotVote",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "BelowNoiseThreshold",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "ECDSAInvalidSignature",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "ECDSAInvalidSignatureLength",
-      "inputs": [
-        {
-          "name": "length",
-          "type": "uint256",
-          "internalType": "uint256"
-        }
-      ]
-    },
-    {
-      "type": "error",
-      "name": "ECDSAInvalidSignatureS",
-      "inputs": [
-        {
-          "name": "s",
-          "type": "bytes32",
-          "internalType": "bytes32"
-        }
-      ]
-    },
-    {
-      "type": "error",
-      "name": "InsufficientDeposit",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "InsufficientDepositForFee",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "InvalidNonce",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "InvalidRoom",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "MinOraclesRequired",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "NotAnOracle",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "NotEligibleToVote",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "NotLandlord",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "NotTenant",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "NotThePenalizedTenant",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "NothingToWithdraw",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "OracleAlreadyAdded",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "OracleNotFound",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "ProposalNotFound",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "QuorumNotReached",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "ReentrancyGuardReentrantCall",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "RewardsAlreadyReleased",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "RoomOccupied",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "TransferFailed",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "ViolationNotFound",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "VotingClosed",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "VotingStillOpen",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "ZeroAddress",
-      "inputs": []
-    },
-    {
-      "type": "error",
-      "name": "ZeroDeposit",
-      "inputs": []
-    }
-  ]
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "initialOracle",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "APPEAL_FEE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "APPEAL_WINDOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_ROOMS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MINIMUM_DEPOSIT",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "NOISE_THRESHOLD_DB",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PENALTY_HIGH",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PENALTY_LOW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "PENALTY_MED",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "VOICE_CREDITS",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "VOTE_PASS_THRESHOLD",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "VOTE_QUORUM",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "addOracle",
+    "inputs": [
+      {
+        "name": "newOracle",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "addressToRoom",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "createAppeal",
+    "inputs": [
+      {
+        "name": "violationId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "reason",
+        "type": "string",
+        "internalType": "string"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "creditsUsed",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "deposit",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "payable"
+  },
+  {
+    "type": "function",
+    "name": "executeProposal",
+    "inputs": [
+      {
+        "name": "proposalId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "getDeposit",
+    "inputs": [
+      {
+        "name": "roomIndex",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "free",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "locked",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getVotes",
+    "inputs": [
+      {
+        "name": "proposalId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "yes",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "no",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "hasVoted",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isDepositSufficient",
+    "inputs": [
+      {
+        "name": "roomIndex",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isOracle",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "isTenant",
+    "inputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "landlord",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "oracleCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "proposalCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "proposals",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "violationId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "appellant",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "createdAt",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "yesVotes",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "noVotes",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "voterCount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "executed",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "passed",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "registerTenant",
+    "inputs": [
+      {
+        "name": "roomIndex",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "tenantAddr",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "releaseRewards",
+    "inputs": [
+      {
+        "name": "violationId",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "removeOracle",
+    "inputs": [
+      {
+        "name": "target",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "reportNoise",
+    "inputs": [
+      {
+        "name": "roomIndex",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "decibels",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "nonce",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "signature",
+        "type": "bytes",
+        "internalType": "bytes"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "reportNonce",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tenantCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tenants",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "addr",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "deposit",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "lockedDeposit",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "registered",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "violationCount",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "violationLocks",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "rewardPerRecipient",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "released",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "violations",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "roomIndex",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "decibels",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "reportedAt",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "penaltyPaid",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "appealed",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "vote",
+    "inputs": [
+      {
+        "name": "proposalId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "approve",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "voteCount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdraw",
+    "inputs": [],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "AppealCreated",
+    "inputs": [
+      {
+        "name": "proposalId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "violationId",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "appellant",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "reason",
+        "type": "string",
+        "indexed": false,
+        "internalType": "string"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Deposited",
+    "inputs": [
+      {
+        "name": "roomIndex",
+        "type": "uint8",
+        "indexed": true,
+        "internalType": "uint8"
+      },
+      {
+        "name": "tenant",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "NoiseReported",
+    "inputs": [
+      {
+        "name": "violationId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "roomIndex",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
+      },
+      {
+        "name": "decibels",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "penalty",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "OracleAdded",
+    "inputs": [
+      {
+        "name": "oracle",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "OracleRemoved",
+    "inputs": [
+      {
+        "name": "oracle",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "PenaltyApplied",
+    "inputs": [
+      {
+        "name": "violationId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "offenderRoom",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
+      },
+      {
+        "name": "penaltyAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "rewardPerTenant",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ProposalExecuted",
+    "inputs": [
+      {
+        "name": "proposalId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "passed",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RewardsReleased",
+    "inputs": [
+      {
+        "name": "violationId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TenantRegistered",
+    "inputs": [
+      {
+        "name": "roomIndex",
+        "type": "uint8",
+        "indexed": true,
+        "internalType": "uint8"
+      },
+      {
+        "name": "tenant",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "VoteCast",
+    "inputs": [
+      {
+        "name": "proposalId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "voter",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "approve",
+        "type": "bool",
+        "indexed": false,
+        "internalType": "bool"
+      },
+      {
+        "name": "voteCount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Withdrawn",
+    "inputs": [
+      {
+        "name": "roomIndex",
+        "type": "uint8",
+        "indexed": true,
+        "internalType": "uint8"
+      },
+      {
+        "name": "tenant",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "AlreadyAppealed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "AlreadyExecuted",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "AlreadyRegistered",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "AlreadyVoted",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "AppealWindowClosed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "AppealWindowStillOpen",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "AppellantCannotVote",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "BelowNoiseThreshold",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ECDSAInvalidSignature",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ECDSAInvalidSignatureLength",
+    "inputs": [
+      {
+        "name": "length",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ECDSAInvalidSignatureS",
+    "inputs": [
+      {
+        "name": "s",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "InsufficientCredits",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InsufficientDeposit",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InsufficientDepositForFee",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidNonce",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidRoom",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidVoteCount",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "MinOraclesRequired",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotAnOracle",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotEligibleToVote",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotLandlord",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotTenant",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotThePenalizedTenant",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NothingToWithdraw",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "OracleAlreadyAdded",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "OracleNotFound",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ProposalNotFound",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "QuorumNotReached",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ReentrancyGuardReentrantCall",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RewardsAlreadyReleased",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "RoomOccupied",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TransferFailed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ViolationNotFound",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "VotingClosed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "VotingStillOpen",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroAddress",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroDeposit",
+    "inputs": []
+  }
+]
 }
