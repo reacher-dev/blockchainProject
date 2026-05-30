@@ -4,12 +4,55 @@ This project connects a Raspberry Pi Pico W noise sensor to a local Web3 rental 
 
 ## What changed in this version
 
+### Smart contract — Quadratic Voting
+
+- `vote()` now accepts a `voteCount` parameter (1–3). Casting `n` votes costs `n²` voice credits.
+- Each voter has `VOICE_CREDITS = 9` per proposal, enforced on-chain.
+- `yesVotes` and `noVotes` in `Proposal` now accumulate vote-unit sums rather than voter counts.
+- The win condition changed from a 60 % threshold to `yesVotes > noVotes`.
+- `Proposal` gained a `voterCount` field so early execution still triggers when every eligible voter has cast a ballot, even if one voter cast more than one unit.
+- A separate `creditsUsed[proposalId][voter]` mapping records how many credits each voter has spent on a proposal.
+- Two new custom errors were added: `InvalidVoteCount` (zero or cost exceeds `VOICE_CREDITS`) and `InsufficientCredits`.
+- `VoteCast` event now includes `voteCount`.
+- Seven new Forge tests cover QV semantics: credit accounting, vote-unit accumulation, win/loss by unit total, and early-execution behavior.
+
+### Frontend — component architecture
+
+- `App.jsx` was split into four focused components under `frontend/src/components/`:
+  - `Dashboard.jsx` — landlord-only system overview (room cards, contract constants, Event Log).
+  - `MockControl.jsx` — live dB chart and manual noise-trigger panel.
+  - `DAOPanel.jsx` — DAO proposal list with Quadratic Voting slider.
+  - `AdminPanel.jsx` — tenant registration, deposit, and noise trigger (landlord only).
+  - `MyRoom.jsx` — tenant-facing room summary and inline appeal form.
+
+### Frontend — role-based tabs
+
+- Four tabs replace the previous three: **我的房間**, **DAO 投票**, **系統總覽**, **管理**.
+- After wallet connection the app reads `contract.landlord()`, `isTenant()`, and `addressToRoom()` to detect the connected account's role and auto-navigates to the appropriate tab.
+- **系統總覽** and **管理** reject non-landlord accounts with an in-page message instead of hiding the tab.
+- **我的房間** shows the tenant's room balance, locked amount, and their personal violation history. Each unappealed violation has an inline appeal form that pre-fills the violation ID.
+- The noise-trigger panel moved from the dashboard into **管理**.
+- All error messages are plain Chinese; raw `e.message` and `e.reason` values are never shown.
+- No emoji appears in any tab label or static page content.
+
+### Frontend — Quadratic Voting UI
+
+- The approve/reject buttons in **DAO 投票** are preceded by a range slider (1–3 votes).
+- The slider label updates live to show how many credits the selected vote count will cost (`n²`).
+- Remaining credits for the connected account are fetched via `creditsUsed()` and displayed next to the slider.
+- After voting, the card switches to a "已投票（花費 N credits）" state.
+
+### Contract ABI
+
+- `frontend/src/contract.json` ABI updated to match the new contract interface: `VOICE_CREDITS`, `creditsUsed`, the updated `vote` signature, and the `voterCount` field in `proposals`.
+
+### Previous changes (hardware)
+
 - Pico W now supports the INMP441 microphone on I2S pins GP10/GP11/GP12.
 - Pico W sends fast monitoring payloads every `0.1` seconds.
 - Backend stores live sensor data and exposes it through `GET /noise/latest` and `GET /noise/history`.
-- Frontend now displays backend sensor data using `estimatedDb`, updates every `200ms`, and refreshes contract state after a backend on-chain submission.
+- Frontend displays backend sensor data using `estimatedDb`, updates every `200ms`, and refreshes contract state after a backend on-chain submission.
 - Short noise spikes are monitoring-only. A contract violation is sent only when the estimated dB is continuously at or above `75 dB` for `5` seconds.
-- The previous 15 second backend cooldown was removed for easier testing.
 - A standalone graph page was added at `hardware/noise_monitor.html`.
 
 ## Frontend notes
