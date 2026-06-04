@@ -44,7 +44,7 @@ export default function Dashboard({ account, isLandlord, rooms, violations, logs
 
   const displayRooms = rooms.length
     ? rooms
-    : ROOM_NAMES.map((name, i) => ({ i, name, registered: false, free: 0n, locked: 0n }));
+    : ROOM_NAMES.map((name, i) => ({ i, name, tenant: null, registered: false, free: 0n, locked: 0n }));
 
   return (
     <>
@@ -78,6 +78,9 @@ export default function Dashboard({ account, isLandlord, rooms, violations, logs
               <div style={{ fontWeight: 800, fontSize: 20, marginBottom: 10, color: S.text }}>{r.name}</div>
               {r.registered ? (
                 <>
+                  <div style={{ fontFamily: "monospace", fontSize: 13, color: S.muted, marginBottom: 8, wordBreak: "break-all" }}>
+                    {r.tenant}
+                  </div>
                   <div style={{ fontSize: 18, color: ROOM_COLORS[r.i], fontWeight: 700 }}>{fmt(r.free)} ETH</div>
                   {r.locked > 0n && (
                     <div style={{ fontSize: 15, color: "#ea580c", marginTop: 4 }}>鎖定 {fmt(r.locked)} ETH</div>

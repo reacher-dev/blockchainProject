@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from "react";
 import { connectWallet, signAsOracle, ROOM_NAMES, CONTRACT_ADDRESS } from "./Web3.js";
-import MyRoom     from "./components/MyRoom.jsx";
-import DAOPanel   from "./components/DAOPanel.jsx";
-import Dashboard  from "./components/Dashboard.jsx";
+import MyRoom from "./components/MyRoom.jsx";
+import DAOPanel from "./components/DAOPanel.jsx";
+import Dashboard from "./components/Dashboard.jsx";
 import AdminPanel from "./components/AdminPanel.jsx";
 
 const SENSOR_API_URL = import.meta.env.VITE_SENSOR_API_URL || "http://127.0.0.1:8000";
@@ -10,10 +10,10 @@ const SENSOR_API_URL = import.meta.env.VITE_SENSOR_API_URL || "http://127.0.0.1:
 const S = { bg: "#f8fafc", text: "#1e293b", muted: "#64748b", border: "#e2e8f0", card: "#ffffff", blue: "#3b82f6" };
 
 const TABS = [
-  { key: "myroom",   label: "我的房間" },
-  { key: "dao",      label: "DAO 投票" },
+  { key: "myroom", label: "我的房間" },
+  { key: "dao", label: "DAO 投票" },
   { key: "overview", label: "系統總覽" },
-  { key: "admin",    label: "管理"     },
+  { key: "admin", label: "管理" },
 ];
 
 function sensorDb(data) {
@@ -26,54 +26,54 @@ function sensorDb(data) {
 const MSG_STYLE = {
   success: { bg: "#f0fdf4", color: "#15803d" },
   warning: { bg: "#fefce8", color: "#854d0e" },
-  info:    { bg: "#f1f5f9", color: "#475569" },
+  info: { bg: "#f1f5f9", color: "#475569" },
 };
 
 export default function App() {
   // ── Wallet & role ─────────────────────────────────────────────────────────
-  const [contract,     setContract]     = useState(null);
-  const [provider,     setProvider]     = useState(null);
-  const [account,      setAccount]      = useState(null);
-  const [chainId,      setChainId]      = useState(null);
-  const [isLandlord,   setIsLandlord]   = useState(false);
-  const [myRoom,       setMyRoom]       = useState(null); // null = not a tenant
-  const [loading,      setLoading]      = useState(false);
-  const [tab,          setTab]          = useState("myroom");
+  const [contract, setContract] = useState(null);
+  const [provider, setProvider] = useState(null);
+  const [account, setAccount] = useState(null);
+  const [chainId, setChainId] = useState(null);
+  const [isLandlord, setIsLandlord] = useState(false);
+  const [myRoom, setMyRoom] = useState(null); // null = not a tenant
+  const [loading, setLoading] = useState(false);
+  const [tab, setTab] = useState("myroom");
 
   // ── Message bar ───────────────────────────────────────────────────────────
-  const [msg,     setMsg]     = useState("");
+  const [msg, setMsg] = useState("");
   const [msgType, setMsgType] = useState("info"); // 'success' | 'warning' | 'info'
 
   function flash(type, text) { setMsg(text); setMsgType(type); }
-  function clearMsg()        { setMsg(""); }
+  function clearMsg() { setMsg(""); }
 
   // ── Chain data ────────────────────────────────────────────────────────────
-  const [rooms,      setRooms]      = useState([]);
+  const [rooms, setRooms] = useState([]);
   const [violations, setViolations] = useState([]);
-  const [proposals,  setProposals]  = useState([]);
-  const [logs,       setLogs]       = useState([]);
+  const [proposals, setProposals] = useState([]);
+  const [logs, setLogs] = useState([]);
 
   // ── MockControl state ─────────────────────────────────────────────────────
-  const [mockRoom,     setMockRoom]     = useState(2);
-  const [mockDb,       setMockDb]       = useState(75);
-  const [flashRoom,    setFlashRoom]    = useState(null);
-  const [dbHistory,    setDbHistory]    = useState(Array(30).fill(42));
+  const [mockRoom, setMockRoom] = useState(2);
+  const [mockDb, setMockDb] = useState(75);
+  const [flashRoom, setFlashRoom] = useState(null);
+  const [dbHistory, setDbHistory] = useState(Array(30).fill(42));
   const [backendNoise, setBackendNoise] = useState(null);
 
   // ── Admin state ───────────────────────────────────────────────────────────
   const [regRoom, setRegRoom] = useState(0);
   const [regAddr, setRegAddr] = useState("");
-  const [depAmt,  setDepAmt]  = useState("0.1");
+  const [depAmt, setDepAmt] = useState("0.1");
 
   // ── DAO state ─────────────────────────────────────────────────────────────
   const [qvCounts, setQvCounts] = useState({});
 
   // ── Refs ──────────────────────────────────────────────────────────────────
-  const lastBackendTimestamp   = useRef(null);
+  const lastBackendTimestamp = useRef(null);
   const lastChainSyncTimestamp = useRef(null);
   const contractRef = useRef(null);
   const providerRef = useRef(null);
-  const accountRef  = useRef(null);
+  const accountRef = useRef(null);
 
   // ── Simulated dB when no backend ─────────────────────────────────────────
   useEffect(() => {
@@ -119,38 +119,70 @@ export default function App() {
   useEffect(() => {
     contractRef.current = contract;
     providerRef.current = provider;
-    accountRef.current  = account;
+    accountRef.current = account;
   }, [contract, provider, account]);
 
+  // Auto execute expired proposals every minute
+  useEffect(() => {
+    if (!contract) return;
+
+    const timer = setInterval(async () => {
+      try {
+        const count = Number(await contract.proposalCount());
+
+        for (let i = 0; i < count; i++) {
+          try {
+            const tx = await contract.executeProposal(i);
+            await tx.wait();
+
+            console.log(`Proposal ${i} 已自動結案`);
+            await loadAll();
+          } catch { }
+        }
+      } catch (err) {
+        console.error(err);
+      }
+    }, 10000); // 每10秒檢查一次
+
+    return () => clearInterval(timer);
+  }, [contract]);
+
   // ── Wallet connection & role detection ────────────────────────────────────
-  async function handleConnect() {
-    try {
-      const w = await connectWallet();
-      if (w.chainId !== 31337n) {
-        flash('warning', '請將 MetaMask 切換到 Anvil 本地鏈（Chain ID: 31337，RPC: http://127.0.0.1:8545）');
-        return;
-      }
-      setContract(w.contract); setProvider(w.provider);
-      setAccount(w.address);   setChainId(w.chainId);
+  async function applyWalletState(w, shouldNavigate = true) {
+    if (w.chainId !== 31337n) {
+      flash('warning', '請將 MetaMask 切換到 Anvil 本地鏈（Chain ID: 31337，RPC: http://127.0.0.1:8545）');
+      return;
+    }
 
-      // Detect role
-      const landAddr  = await w.contract.landlord();
-      const isLandAcc = landAddr.toLowerCase() === w.address.toLowerCase();
-      setIsLandlord(isLandAcc);
+    setContract(w.contract);
+    setProvider(w.provider);
+    setAccount(w.address);
+    setChainId(w.chainId);
 
-      let roomIdx = null;
-      if (!isLandAcc) {
-        const isTen = await w.contract.isTenant(w.address);
-        if (isTen) roomIdx = Number(await w.contract.addressToRoom(w.address));
-      }
-      setMyRoom(roomIdx);
+    const landAddr = await w.contract.landlord();
+    const isLandAcc = landAddr.toLowerCase() === w.address.toLowerCase();
+    setIsLandlord(isLandAcc);
 
-      // Auto-navigate based on role
+    let roomIdx = null;
+    if (!isLandAcc) {
+      const isTen = await w.contract.isTenant(w.address);
+      if (isTen) roomIdx = Number(await w.contract.addressToRoom(w.address));
+    }
+    setMyRoom(roomIdx);
+
+    if (shouldNavigate) {
       if (isLandAcc) setTab("overview");
       else if (roomIdx !== null) setTab("myroom");
+    }
 
-      await loadAll(w.contract, w.provider, w.address);
-      clearMsg();
+    await loadAll(w.contract, w.provider, w.address);
+    clearMsg();
+  }
+
+  async function handleConnect(shouldNavigate = true, selectedAddress = null) {
+    try {
+      const w = await connectWallet(selectedAddress);
+      await applyWalletState(w, shouldNavigate);
     } catch {
       const cur = window.ethereum?.chainId;
       if (cur && cur !== "0x7a69") {
@@ -160,6 +192,41 @@ export default function App() {
       }
     }
   }
+
+  useEffect(() => {
+    if (!window.ethereum?.on) return;
+
+    const handleAccountsChanged = (accounts) => {
+      if (!accounts.length) {
+        setContract(null);
+        setProvider(null);
+        setAccount(null);
+        setChainId(null);
+        setIsLandlord(false);
+        setMyRoom(null);
+        setRooms([]);
+        setViolations([]);
+        setProposals([]);
+        setLogs([]);
+        flash('info', 'MetaMask 已中斷連線');
+        return;
+      }
+
+      handleConnect(true, accounts[0]);
+    };
+
+    const handleChainChanged = () => {
+      handleConnect(true);
+    };
+
+    window.ethereum.on("accountsChanged", handleAccountsChanged);
+    window.ethereum.on("chainChanged", handleChainChanged);
+
+    return () => {
+      window.ethereum.removeListener?.("accountsChanged", handleAccountsChanged);
+      window.ethereum.removeListener?.("chainChanged", handleChainChanged);
+    };
+  }, []);
 
   // ── Chain data loaders ────────────────────────────────────────────────────
   async function loadAll(c, p, address) {
@@ -172,7 +239,7 @@ export default function App() {
     const list = await Promise.all(ROOM_NAMES.map(async (name, i) => {
       const t = await ct.tenants(i);
       const [free, locked] = await ct.getDeposit(i);
-      return { i, name, registered: t.registered, free, locked };
+      return { i, name, tenant: t.addr, registered: t.registered, free, locked };
     }));
     setRooms(list);
   }
@@ -210,7 +277,7 @@ export default function App() {
         catch { return null; }
       }).filter(Boolean).reverse().slice(0, 8);
       setLogs(parsed);
-    } catch {}
+    } catch { }
   }
 
   // ── Action handlers ───────────────────────────────────────────────────────
@@ -218,7 +285,7 @@ export default function App() {
     setLoading(true); flash('info', '簽章中...');
     try {
       const nonce = await contract.reportNonce();
-      const sig   = await signAsOracle(CONTRACT_ADDRESS, chainId, mockRoom, mockDb, nonce);
+      const sig = await signAsOracle(CONTRACT_ADDRESS, chainId, mockRoom, mockDb, nonce);
       flash('info', '送出交易...');
       const tx = await contract.reportNoise(mockRoom, BigInt(mockDb), nonce, sig);
       setFlashRoom(mockRoom);
@@ -240,8 +307,30 @@ export default function App() {
 
   async function handleDeposit() {
     setLoading(true);
-    try { const { ethers } = await import("ethers"); const tx = await contract.deposit({ value: ethers.parseEther(depAmt) }); await tx.wait(); flash('success', '存款成功'); await loadRooms(contract); }
-    catch { flash('warning', '存款失敗，請確認帳號與金額是否正確'); }
+
+    try {
+      const { ethers } = await import("ethers");
+
+      const tx = await contract.deposit({
+        value: ethers.parseEther(depAmt)
+      });
+
+      await tx.wait();
+
+      flash("success", "存款成功");
+
+      setDepAmt("");
+
+      await loadAll();
+    } catch (err) {
+      console.error(err);
+
+      flash(
+        "warning",
+        "存款失敗，請確認帳號與金額是否正確"
+      );
+    }
+
     setLoading(false);
   }
 
@@ -312,6 +401,10 @@ export default function App() {
             violations={violations}
             loading={loading}
             handleAppeal={handleAppeal}
+
+            depAmt={depAmt}
+            setDepAmt={setDepAmt}
+            handleDeposit={handleDeposit}
           />
         )}
 
@@ -345,9 +438,10 @@ export default function App() {
             isLandlord={isLandlord}
             contract={contract}
             loading={loading}
-            regRoom={regRoom}   setRegRoom={setRegRoom}
-            regAddr={regAddr}   setRegAddr={setRegAddr}
-            depAmt={depAmt}     setDepAmt={setDepAmt}
+            rooms={rooms}
+            regRoom={regRoom} setRegRoom={setRegRoom}
+            regAddr={regAddr} setRegAddr={setRegAddr}
+            depAmt={depAmt} setDepAmt={setDepAmt}
             handleRegister={handleRegister}
             handleDeposit={handleDeposit}
             mockControlProps={mockControlProps}

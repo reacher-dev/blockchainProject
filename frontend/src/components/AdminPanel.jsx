@@ -6,10 +6,7 @@ const ROOM_LABELS = ["A", "B", "C", "D", "E"];
 
 export default function AdminPanel({
   account, isLandlord, contract, loading,
-  regRoom, setRegRoom, regAddr, setRegAddr,
-  depAmt, setDepAmt,
-  handleRegister, handleDeposit,
-  mockControlProps,
+  rooms, regRoom, setRegRoom, regAddr, setRegAddr, handleRegister, mockControlProps,
 }) {
   if (!account) {
     return (
@@ -30,50 +27,106 @@ export default function AdminPanel({
 
   const inp = { padding: "10px 14px", border: `1px solid ${S.border}`, borderRadius: 8, fontSize: 17, background: S.card, color: S.text, width: "100%", boxSizing: "border-box" };
   const btn = (bg) => ({ padding: "12px 20px", background: bg, color: "#fff", border: "none", borderRadius: 9, fontWeight: 700, fontSize: 17, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1, width: "100%" });
+  const displayRooms = rooms?.length
+    ? rooms
+    : ROOM_NAMES.map((name, i) => ({ i, name, tenant: null, registered: false }));
 
   return (
     <>
-      {/* Register + Deposit */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20, marginBottom: 28 }}>
-        {/* Register tenant */}
-        <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, padding: 28, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-          <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 22 }}>登記房客</div>
+      {/* Register tenant */}
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr",
+          gap: 20,
+          marginBottom: 28
+        }}
+      >
+        <div
+          style={{
+            background: S.card,
+            border: `1px solid ${S.border}`,
+            borderRadius: 16,
+            padding: 28,
+            boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
+          }}
+        >
+          <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 22 }}>
+            登記房客
+          </div>
 
-          <label style={{ fontSize: 16, color: S.muted, display: "block", marginBottom: 6 }}>房間</label>
-          <select value={regRoom} onChange={e => setRegRoom(Number(e.target.value))} style={{ ...inp, marginBottom: 18 }}>
-            {ROOM_NAMES.map((n, i) => (
-              <option key={i} value={i}>Room {ROOM_LABELS[i]} — {n}</option>
+          <div style={{ display: "grid", gridTemplateColumns: "160px 1fr 150px", gap: 12, alignItems: "end", marginBottom: 22 }}>
+            <label>
+              <div style={{ fontSize: 15, color: S.muted, marginBottom: 6 }}>房間</div>
+              <select
+                value={regRoom}
+                onChange={(e) => setRegRoom(Number(e.target.value))}
+                style={inp}
+              >
+                {ROOM_NAMES.map((name, i) => (
+                  <option key={name} value={i}>
+                    Room {ROOM_LABELS[i]} - {name}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <div style={{ fontSize: 15, color: S.muted, marginBottom: 6 }}>房客錢包地址</div>
+              <input
+                value={regAddr}
+                onChange={(e) => setRegAddr(e.target.value)}
+                placeholder="0x..."
+                style={inp}
+              />
+            </label>
+
+            <button
+              onClick={handleRegister}
+              disabled={loading || !contract || !regAddr.trim()}
+              style={btn("#3b82f6")}
+            >
+              登記
+            </button>
+          </div>
+
+          <div style={{ border: `1px solid ${S.border}`, borderRadius: 12, overflow: "hidden" }}>
+            {displayRooms.map((room, idx) => (
+              <div
+                key={room.i}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "120px 1fr",
+                  gap: 12,
+                  padding: "12px 14px",
+                  borderTop: idx === 0 ? "none" : `1px solid ${S.border}`,
+                  background: room.registered ? "#f8fafc" : "#fff",
+                }}
+              >
+                <div style={{ fontWeight: 700, color: S.text }}>
+                  Room {ROOM_LABELS[room.i]}
+                </div>
+                <div style={{ color: room.registered ? S.text : S.muted, fontFamily: room.registered ? "monospace" : "inherit", wordBreak: "break-all" }}>
+                  {room.registered ? room.tenant : "尚未登記"}
+                </div>
+              </div>
             ))}
-          </select>
-
-          <label style={{ fontSize: 16, color: S.muted, display: "block", marginBottom: 6 }}>房客錢包地址</label>
-          <input style={{ ...inp, marginBottom: 22 }} value={regAddr} onChange={e => setRegAddr(e.target.value)} placeholder="0x..." />
-
-          <button onClick={handleRegister} disabled={loading || !regAddr || !contract} style={btn("#6b705c")}>
-            Register Tenant
-          </button>
-        </div>
-
-        {/* Deposit */}
-        <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, padding: 28, boxShadow: "0 1px 3px rgba(0,0,0,0.04)" }}>
-          <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 22 }}>存入保證金</div>
-
-          <label style={{ fontSize: 16, color: S.muted, display: "block", marginBottom: 6 }}>金額（ETH）</label>
-          <input
-            type="number" step="0.01"
-            style={{ ...inp, marginBottom: 22 }}
-            value={depAmt}
-            onChange={e => setDepAmt(e.target.value)}
-          />
-
-          <button onClick={handleDeposit} disabled={loading || !contract} style={btn("#22c55e")}>
-            Deposit
-          </button>
+          </div>
         </div>
       </div>
 
       {/* Noise trigger panel */}
-      <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14, color: S.text }}>噪音模擬與即時監測</div>
+      <div
+        style={{
+          fontWeight: 700,
+          fontSize: 20,
+          marginBottom: 14,
+          color: S.text
+        }}
+      >
+        噪音模擬與即時監測
+      </div>
+
       <MockControl {...mockControlProps} />
     </>
   );

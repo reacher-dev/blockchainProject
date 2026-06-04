@@ -30,7 +30,7 @@ contract RentEscrow is ReentrancyGuard {
 
     uint8   public constant MAX_ROOMS           = 5;
     uint256 public constant NOISE_THRESHOLD_DB  = 70;
-    uint256 public constant APPEAL_WINDOW       = 24 hours;
+    uint256 public constant APPEAL_WINDOW       = 2 minutes; // demo可改成2分鐘
     uint256 public constant APPEAL_FEE          = 0.01 ether;
     uint256 public constant VOTE_PASS_THRESHOLD = 60;   // percent of votes cast (kept for reference)
     uint256 public constant VOTE_QUORUM         = 3;    // minimum vote-units that must be cast
@@ -436,6 +436,17 @@ contract RentEscrow is ReentrancyGuard {
         emit AppealCreated(pid, violationId, msg.sender, reason);
     }
 
+    function _eligibleVoterCount(uint256 proposalId) internal view returns (uint256) {
+        Proposal storage p = proposals[proposalId];
+
+        uint256 count = tenantCount + 1; // tenants + landlord
+
+        if (isTenant[p.appellant]) {
+            count -= 1;
+        }
+
+        return count;
+    }
     /**
      * @notice Cast a Quadratic Vote on an open appeal proposal.
      *
@@ -482,32 +493,24 @@ contract RentEscrow is ReentrancyGuard {
      *
      * Anyone may call (frontend, keeper, any participant).
      */
-    function executeProposal(uint256 proposalId) external {
-        if (proposalId >= proposalCount) revert ProposalNotFound();
 
+    function _executeProposal(uint256 proposalId) internal {
         Proposal storage p = proposals[proposalId];
+
         if (p.executed) revert AlreadyExecuted();
 
-        // Quorum measured in total vote-units cast (QV semantics)
         uint256 total = p.yesVotes + p.noVotes;
-        // Early execution once every eligible voter has voted (distinct-voter count)
-        bool allEligibleVoted = p.voterCount >= tenantCount;
-        if (block.timestamp <= p.createdAt + APPEAL_WINDOW && !allEligibleVoted) {
-            revert VotingStillOpen();
-        }
         if (total < VOTE_QUORUM) revert QuorumNotReached();
 
         p.executed = true;
 
-        // QV win condition: whichever side accumulated more vote-units wins
         if (p.yesVotes > p.noVotes) {
-            // Appeal passed — reverse the penalty (Fix 1: from lockedDeposit)
             p.passed = true;
             _reversePenalty(proposalId);
         } else {
-            // Appeal failed — release rewards to recipients (they earned them)
-            Violation storage v      = violations[p.violationId];
+            Violation storage v = violations[p.violationId];
             ViolationLock storage lk = violationLocks[p.violationId];
+
             if (!lk.released) {
                 lk.released = true;
                 _moveLockedToFree(v.roomIndex, lk.rewardPerRecipient);
@@ -515,7 +518,24 @@ contract RentEscrow is ReentrancyGuard {
         }
 
         emit ProposalExecuted(proposalId, p.passed);
+    } 
+
+    function executeProposal(uint256 proposalId) external {
+        if (proposalId >= proposalCount) revert ProposalNotFound();
+
+        Proposal storage p = proposals[proposalId];
+
+        if (p.executed) revert AlreadyExecuted();
+
+        bool allEligibleVoted = p.voterCount >= _eligibleVoterCount(proposalId);
+        if (block.timestamp <= p.createdAt + APPEAL_WINDOW && !allEligibleVoted) {
+            revert VotingStillOpen();
+        }
+
+        _executeProposal(proposalId);
     }
+
+
 
     // ─── Internal: Penalty Reversal (Fix 1) ──────────────────────────────────────
 

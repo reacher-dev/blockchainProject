@@ -11,11 +11,13 @@ export const ORACLE_PRIVATE_KEY =
 export const ROOM_NAMES = ["Alice", "Bob", "Charlie", "David", "Eve"];
 
 // MetaMask 連線
-export async function connectWallet() {
+export async function connectWallet(selectedAddress = null) {
   if (!window.ethereum) throw new Error("請安裝 MetaMask");
   const provider = new ethers.BrowserProvider(window.ethereum);
-  await provider.send("eth_requestAccounts", []);
-  const signer = await provider.getSigner();
+  const accounts = selectedAddress
+    ? [selectedAddress]
+    : await provider.send("eth_requestAccounts", []);
+  const signer = await provider.getSigner(accounts[0]);
   const address = await signer.getAddress();
   const network = await provider.getNetwork();
   const contract = new ethers.Contract(CONTRACT_ADDRESS, ABI, signer);

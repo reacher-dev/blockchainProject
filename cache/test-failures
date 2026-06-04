@@ -1,1 +1,1 @@
-test_IsDepositSufficient_True_WhenFunded
+test_ExecuteEarlyWhenAllEligibleVotersHaveVoted

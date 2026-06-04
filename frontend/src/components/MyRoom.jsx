@@ -13,16 +13,17 @@ function Placeholder({ text }) {
   );
 }
 
-export default function MyRoom({ account, myRoom, rooms, violations, loading, handleAppeal }) {
+export default function MyRoom({ account, myRoom, rooms, violations, loading, handleAppeal, depAmt,
+  setDepAmt, handleDeposit }) {
   const [appealReasons, setAppealReasons] = useState({});
-  const [openAppeal,    setOpenAppeal]    = useState(null);
+  const [openAppeal, setOpenAppeal] = useState(null);
 
   if (!account) return <Placeholder text="請先連接 MetaMask" />;
   if (myRoom === null) return <Placeholder text="您尚未入住任何房間" />;
 
   const roomData = rooms.find(r => r.i === myRoom);
   const myViolations = violations.filter(v => v.room === myRoom);
-  const unappealed   = myViolations.filter(v => !v.appealed);
+  const unappealed = myViolations.filter(v => !v.appealed);
 
   const inp = { padding: "10px 14px", border: `1px solid ${S.border}`, borderRadius: 8, fontSize: 17, background: S.card, color: S.text, width: "100%", boxSizing: "border-box" };
   const btn = (bg) => ({ padding: "10px 18px", background: bg, color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, fontSize: 17, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1 });
@@ -64,7 +65,48 @@ export default function MyRoom({ account, myRoom, rooms, violations, loading, ha
           </div>
         </div>
       </div>
+      {/* 補充押金 */}
+      <div
+        style={{
+          background: S.card,
+          border: `1px solid ${S.border}`,
+          borderRadius: 16,
+          padding: 24,
+          marginBottom: 24
+        }}
+      >
+        <div
+          style={{
+            fontWeight: 700,
+            fontSize: 20,
+            marginBottom: 12
+          }}
+        >
+          補充押金
+        </div>
 
+        <div
+          style={{
+            display: "flex",
+            gap: 12
+          }}
+        >
+          <input
+            style={inp}
+            value={depAmt}
+            onChange={(e) => setDepAmt(e.target.value)}
+            placeholder="0.1"
+          />
+
+          <button
+            onClick={handleDeposit}
+            disabled={loading}
+            style={btn("#10b981")}
+          >
+            存入 ETH
+          </button>
+        </div>
+      </div>
       {/* Unappealed violations warning */}
       {unappealed.length > 0 && (
         <div style={{ background: "#fef9c3", border: "1px solid #fde047", borderRadius: 12, padding: "14px 20px", marginBottom: 24, fontSize: 17, color: "#854d0e", fontWeight: 500 }}>
@@ -129,6 +171,9 @@ export default function MyRoom({ account, myRoom, rooms, violations, loading, ha
           目前無違規紀錄
         </div>
       )}
+      
+
+
     </>
   );
 }
