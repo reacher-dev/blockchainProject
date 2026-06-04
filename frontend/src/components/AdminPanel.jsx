@@ -115,19 +115,16 @@ export default function AdminPanel({
         </div>
       </div>
 
-      {/* Noise trigger panel */}
-      <div
-        style={{
-          fontWeight: 700,
-          fontSize: 20,
-          marginBottom: 14,
-          color: S.text
-        }}
-      >
-        噪音模擬與即時監測
+      {/* Live dB monitor */}
+      <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14, color: S.text }}>
+        即時監測
       </div>
 
-      <MockControl {...mockControlProps} />
+      <MockControl
+        dbHistory={mockControlProps.dbHistory}
+        backendNoise={mockControlProps.backendNoise}
+        lastDb={mockControlProps.lastDb}
+      />
     </>
   );
 }

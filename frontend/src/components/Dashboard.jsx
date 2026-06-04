@@ -24,20 +24,11 @@ function logDesc(log) {
   return { t: name, c: S.muted };
 }
 
-export default function Dashboard({ account, isLandlord, rooms, violations, logs, flashRoom, loadAll }) {
+export default function Dashboard({ account, isLandlord, isUnknown, rooms, violations, logs, flashRoom, loadAll }) {
   if (!account) {
     return (
       <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, padding: 52, textAlign: "center", color: S.muted, fontSize: 18 }}>
         請先連接 MetaMask
-      </div>
-    );
-  }
-
-  if (!isLandlord) {
-    return (
-      <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, padding: 52, textAlign: "center", fontSize: 18 }}>
-        <div style={{ fontWeight: 700, color: S.text, marginBottom: 8 }}>僅房東可查看系統總覽</div>
-        <div style={{ color: S.muted }}>請使用房東帳號連接</div>
       </div>
     );
   }

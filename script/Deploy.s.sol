@@ -8,24 +8,29 @@ import "../src/RentEscrow.sol";
  * @notice Deploy RentEscrow to a local Anvil node.
  *
  * Usage:
- *   anvil                         # start local node in another terminal
- *   forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast
+ *   anvil
+ *   PRIVATE_KEY=<key> forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast
+ *
+ * Optional env vars:
+ *   ORACLE_ADDRESS  — oracle address (default: Anvil account #1)
  */
 contract DeployScript is Script {
-    // Anvil default account #0 (landlord) and #1 (oracle public key)
-    // Replace with real addresses for testnet/mainnet
-    address constant ORACLE = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
+    address constant DEFAULT_ORACLE = 0x70997970C51812dc3A010C7d01b50e0d17dc79C8;
 
     function run() external {
         uint256 deployerKey = vm.envUint("PRIVATE_KEY");
-        vm.startBroadcast(deployerKey);
 
-        RentEscrow escrow = new RentEscrow(ORACLE);
+        address oracle = DEFAULT_ORACLE;
+        try vm.envAddress("ORACLE_ADDRESS") returns (address a) {
+            if (a != address(0)) oracle = a;
+        } catch {}
+
+        vm.startBroadcast(deployerKey);
+        RentEscrow escrow = new RentEscrow(oracle);
+        vm.stopBroadcast();
 
         console.log("RentEscrow deployed at:", address(escrow));
         console.log("Landlord:", escrow.landlord());
-        //console.log("Oracle  :", escrow.oracle());
-
-        vm.stopBroadcast();
+        console.log("Oracle  :", oracle);
     }
 }

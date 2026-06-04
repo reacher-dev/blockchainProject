@@ -241,27 +241,64 @@ contract RentEscrowTest is Test {
         escrow.reportNoise(0, 80, nonce, sig);
     }
 
-    // ─── 5. Fix 4 — Tiered Penalties ─────────────────────────────────────────────
+    // ─── 5. Cumulative Penalty Tiers ─────────────────────────────────────────────
 
-    function test_PenaltyTierLow_71to85dB() public {
-        _depositAll(2 ether);
-        _reportNoise(0, 80); // 80 dB → PENALTY_LOW
+    function test_PenaltyTier1_Violations1to5() public {
+        _depositAll(1 ether);
+        // violations 1–5 → PENALTY_TIER1 (0.001 ETH) each
+        for (uint256 i = 0; i < 5; i++) {
+            _reportNoise(0, 80);
+        }
         (uint256 free,) = escrow.getDeposit(0);
-        assertEq(free, 2 ether - escrow.PENALTY_LOW());
+        assertEq(free, 1 ether - 5 * escrow.PENALTY_TIER1());
     }
 
-    function test_PenaltyTierMed_86to100dB() public {
-        _depositAll(2 ether);
-        _reportNoise(0, 90); // 90 dB → PENALTY_MED
+    function test_PenaltyTier2_SixthViolation() public {
+        _depositAll(1 ether);
+        // first 5 → TIER1
+        for (uint256 i = 0; i < 5; i++) {
+            _reportNoise(0, 80);
+        }
+        // 6th → TIER2 (0.002 ETH)
+        _reportNoise(0, 80);
         (uint256 free,) = escrow.getDeposit(0);
-        assertEq(free, 2 ether - escrow.PENALTY_MED());
+        assertEq(free, 1 ether - 5 * escrow.PENALTY_TIER1() - escrow.PENALTY_TIER2());
     }
 
-    function test_PenaltyTierHigh_over100dB() public {
-        _depositAll(2 ether);
-        _reportNoise(0, 110); // 110 dB → PENALTY_HIGH
+    function test_PenaltyTier3_EleventhViolation() public {
+        _depositAll(1 ether);
+        // violations 1–5 → TIER1
+        for (uint256 i = 0; i < 5; i++) {
+            _reportNoise(0, 80);
+        }
+        // violations 6–10 → TIER2
+        for (uint256 i = 0; i < 5; i++) {
+            _reportNoise(0, 80);
+        }
+        // 11th → TIER3 (0.004 ETH)
+        _reportNoise(0, 80);
         (uint256 free,) = escrow.getDeposit(0);
-        assertEq(free, 2 ether - escrow.PENALTY_HIGH());
+        assertEq(free, 1 ether - 5 * escrow.PENALTY_TIER1() - 5 * escrow.PENALTY_TIER2() - escrow.PENALTY_TIER3());
+    }
+
+    function test_TenantViolationCountIncrements() public {
+        _depositAll(1 ether);
+        assertEq(escrow.tenantViolationCount(tenantAddrs[0]), 0);
+        _reportNoise(0, 80);
+        assertEq(escrow.tenantViolationCount(tenantAddrs[0]), 1);
+        _reportNoise(0, 80);
+        assertEq(escrow.tenantViolationCount(tenantAddrs[0]), 2);
+    }
+
+    function test_ViolationCountIsPerTenant() public {
+        _depositAll(1 ether);
+        // Tenant 0 gets 3 violations, tenant 1 gets 1 violation
+        _reportNoise(0, 80);
+        _reportNoise(0, 80);
+        _reportNoise(0, 80);
+        _reportNoise(1, 80);
+        assertEq(escrow.tenantViolationCount(tenantAddrs[0]), 3);
+        assertEq(escrow.tenantViolationCount(tenantAddrs[1]), 1);
     }
 
     function test_RevertWhen_BelowNoiseThreshold() public {
@@ -285,9 +322,9 @@ contract RentEscrowTest is Test {
 
     function test_RewardsGoToLockedNotFree() public {
         _depositAll(2 ether);
-        _reportNoise(0, 80); // PENALTY_LOW distributed
+        _reportNoise(0, 80); // PENALTY_TIER1 distributed
 
-        uint256 rewardEach = escrow.PENALTY_LOW() / 4;
+        uint256 rewardEach = escrow.PENALTY_TIER1() / 4;
         for (uint8 i = 1; i < 5; i++) {
             (uint256 free, uint256 locked) = escrow.getDeposit(i);
             assertEq(free,   2 ether);     // free balance unchanged
@@ -314,7 +351,7 @@ contract RentEscrowTest is Test {
     function test_ReleaseRewards_MovesLockedToFree() public {
         _depositAll(2 ether);
         uint256 vid = _reportNoise(0, 80);
-        uint256 rewardEach = escrow.PENALTY_LOW() / 4;
+        uint256 rewardEach = escrow.PENALTY_TIER1() / 4;
 
         vm.warp(block.timestamp + 25 hours);
         escrow.releaseRewards(vid);
@@ -485,7 +522,7 @@ contract RentEscrowTest is Test {
 
     function test_AppealFailed_LockedRewardsReleasedToRecipients() public {
         (, uint256 pid) = _setupAppeal(0, 80);
-        uint256 rewardEach = escrow.PENALTY_LOW() / 4;
+        uint256 rewardEach = escrow.PENALTY_TIER1() / 4;
 
         // 3 no votes — quorum met, appeal fails
         vm.prank(tenantAddrs[1]); escrow.vote(pid, false, 1);

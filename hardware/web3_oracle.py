@@ -24,24 +24,26 @@ ROOM_ALIASES = {
     "0": 0,
     "a": 0,
     "room a": 0,
-    "alice": 0,
+    "林": 0,
     "1": 1,
     "b": 1,
     "room b": 1,
-    "bob": 1,
+    "劉": 1,
     "2": 2,
     "c": 2,
     "room c": 2,
-    "charlie": 2,
+    "鄭": 2,
     "3": 3,
     "d": 3,
     "room d": 3,
-    "david": 3,
+    "吳": 3,
     "4": 4,
     "e": 4,
     "room e": 4,
-    "eve": 4,
+    "許": 4,
 }
+
+ROOM_DISPLAY = ["林", "劉", "鄭", "吳", "許"]
 
 STATE = {
     "latest": None,
@@ -49,12 +51,16 @@ STATE = {
     "last_error": None,
 }
 
+# Runtime contract address — overrides the value in contract.json.
+# Set via POST /contract/address after frontend deploys the contract.
+RUNTIME_CONTRACT_ADDRESS = None
+
 
 def room_to_index(room_name):
     key = str(room_name).strip().lower()
     if key not in ROOM_ALIASES:
         raise ValueError(
-            "violation_details.culprit_room must be one of Room A-E, A-E, 0-4, or tenant demo names"
+            "violation_details.culprit_room must be one of Room A-E, A-E, 0-4, or 林/劉/鄭/吳/許"
         )
     return ROOM_ALIASES[key]
 
@@ -70,7 +76,7 @@ def normalize_violation(validated_data):
         "timestamp": validated_data["timestamp"],
         "receivedAt": int(time.time()),
         "roomIndex": room_index,
-        "roomLabel": f"Room {chr(ord('A') + room_index)}",
+        "roomLabel": ROOM_DISPLAY[room_index],
         "decibels": decibels,
         "estimatedDb": details.get("estimated_db", decibels),
         "noiseLevel": details.get("noise_level"),
@@ -88,7 +94,12 @@ def normalize_violation(validated_data):
 def load_contract_config():
     with CONTRACT_JSON_PATH.open("r", encoding="utf-8") as handle:
         data = json.load(handle)
-    return data["address"], data["abi"]
+    address = RUNTIME_CONTRACT_ADDRESS or data.get("address")
+    if not address:
+        raise RuntimeError(
+            "合約地址尚未設定。請先透過前端建立公寓，或呼叫 POST /contract/address。"
+        )
+    return address, data["abi"]
 
 
 def submit_onchain(noise_event):
@@ -142,6 +153,12 @@ def submit_onchain(noise_event):
         raw_transaction = signed_tx.rawTransaction
     tx_hash = web3.eth.send_raw_transaction(raw_transaction)
     receipt = web3.eth.wait_for_transaction_receipt(tx_hash)
+
+    if receipt.status == 0:
+        raise RuntimeError(
+            f"Transaction reverted (txHash: {tx_hash.hex()}). "
+            "可能原因：押金不足、房客未登記、或 nonce 衝突。"
+        )
 
     return {
         "submitted": True,
@@ -274,6 +291,54 @@ class OracleRequestHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         try:
+            if self.path == "/contract/address":
+                global RUNTIME_CONTRACT_ADDRESS
+                content_length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(content_length) if content_length > 0 else b""
+                try:
+                    body = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+                except json.JSONDecodeError:
+                    self._send_json(400, {"status": "error", "message": "Invalid JSON"})
+                    return
+                addr = body.get("address", "").strip()
+                if not addr or not addr.startswith("0x") or len(addr) != 42:
+                    self._send_json(400, {"status": "error", "message": "address must be a 42-char 0x hex string"})
+                    return
+                RUNTIME_CONTRACT_ADDRESS = addr
+                print(f"[oracle] contract address updated to {addr}")
+                self._send_json(200, {"status": "success", "address": addr})
+                return
+
+            if self.path == "/noise/mock":
+                content_length = int(self.headers.get("Content-Length", "0"))
+                raw_body = self.rfile.read(content_length) if content_length > 0 else b""
+                try:
+                    body = json.loads(raw_body.decode("utf-8")) if raw_body else {}
+                except json.JSONDecodeError:
+                    self._send_json(400, {"status": "error", "message": "Invalid JSON"})
+                    return
+                room = body.get("room")
+                decibels = body.get("decibels")
+                if not isinstance(room, int) or not (0 <= room <= 4):
+                    self._send_json(400, {"status": "error", "message": "room must be integer 0-4"})
+                    return
+                if not isinstance(decibels, (int, float)):
+                    self._send_json(400, {"status": "error", "message": "decibels must be a number"})
+                    return
+                noise_event = {
+                    "roomIndex": room,
+                    "roomLabel": ROOM_DISPLAY[room],
+                    "decibels": int(decibels),
+                    "reportAllowed": True,
+                }
+                try:
+                    onchain = submit_onchain(noise_event)
+                    self._send_json(200, {"status": "success", "data": onchain})
+                except Exception as exc:
+                    STATE["last_error"] = str(exc)
+                    self._send_json(500, {"status": "error", "message": str(exc)})
+                return
+
             if self.path not in ("/", "/noise/ingest"):
                 self._send_json(404, {"status": "error", "message": "Not found"})
                 return

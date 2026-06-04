@@ -16,7 +16,7 @@ import "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
  *                        free, balance — eliminating the underflow bug.
  *   2. Quorum          — executeProposal requires at least VOTE_QUORUM votes cast.
  *   3. Landlord votes  — vote() now accepts landlord as an eligible voter.
- *   4. Tiered penalty  — penalty scales with dB level (LOW/MED/HIGH tiers).
+ *   4. Tiered penalty  — penalty scales with cumulative violation count per tenant (TIER1/2/3).
  *   5. Min deposit     — MINIMUM_DEPOSIT constant + isDepositSufficient() view.
  *   6. Nonce replay    — timestamp replaced by a contract-level reportNonce;
  *                        oracle must include the current nonce in every signature.
@@ -30,19 +30,19 @@ contract RentEscrow is ReentrancyGuard {
 
     uint8   public constant MAX_ROOMS           = 5;
     uint256 public constant NOISE_THRESHOLD_DB  = 70;
-    uint256 public constant APPEAL_WINDOW       = 2 minutes; // demo可改成2分鐘
+    uint256 public constant APPEAL_WINDOW       = 300;   // 5 minutes (demo)
     uint256 public constant APPEAL_FEE          = 0.01 ether;
     uint256 public constant VOTE_PASS_THRESHOLD = 60;   // percent of votes cast (kept for reference)
     uint256 public constant VOTE_QUORUM         = 3;    // minimum vote-units that must be cast
     uint256 public constant VOICE_CREDITS       = 9;    // QV credits per voter per proposal
 
-    // Fix 4 — tiered penalties by dB level
-    uint256 public constant PENALTY_LOW  = 0.2 ether;  // 71 – 85 dB
-    uint256 public constant PENALTY_MED  = 0.3 ether;  // 86 – 100 dB
-    uint256 public constant PENALTY_HIGH = 0.4 ether;  // > 100 dB
+    // Cumulative-count penalty tiers (per tenant, not per dB level)
+    uint256 public constant PENALTY_TIER1 = 0.001 ether; // violations 1–5
+    uint256 public constant PENALTY_TIER2 = 0.002 ether; // violations 6–10
+    uint256 public constant PENALTY_TIER3 = 0.004 ether; // violations 11+
 
-    // Fix 5 — minimum free deposit a tenant must maintain to be penalty-eligible
-    uint256 public constant MINIMUM_DEPOSIT = PENALTY_HIGH; // covers worst-case tier
+    // Fix 5 — minimum free deposit covers worst-case penalty tier
+    uint256 public constant MINIMUM_DEPOSIT = PENALTY_TIER3;
 
     // ─── Custom Errors ───────────────────────────────────────────────────────────
 
@@ -133,6 +133,9 @@ contract RentEscrow is ReentrancyGuard {
     uint256 public violationCount;
     mapping(uint256 => Violation)     public violations;
     mapping(uint256 => ViolationLock) public violationLocks; // Fix 1
+
+    // Cumulative violation count per tenant address (drives penalty tier)
+    mapping(address => uint256) public tenantViolationCount;
 
     // ─── DAO Proposals ───────────────────────────────────────────────────────────
 
@@ -304,11 +307,14 @@ contract RentEscrow is ReentrancyGuard {
         address signer  = ethHash.recover(signature);
         if (!isOracle[signer]) revert NotAnOracle(); // Fix 7
 
-        // 3. Threshold and deposit checks
+        // 3. Threshold check
         if (decibels <= NOISE_THRESHOLD_DB) revert BelowNoiseThreshold();
 
-        uint256 penalty = _computePenalty(decibels); // Fix 4
-        if (tenants[roomIndex].deposit < penalty)   revert InsufficientDeposit();
+        // 4. Increment per-tenant violation counter and compute cumulative-tier penalty
+        address tenantAddr = tenants[roomIndex].addr;
+        tenantViolationCount[tenantAddr]++;
+        uint256 penalty = _computePenaltyByCount(tenantViolationCount[tenantAddr]);
+        if (tenants[roomIndex].deposit < penalty) revert InsufficientDeposit();
 
         // 4. Consume nonce (EFFECT before events/storage writes)
         reportNonce++;
@@ -329,12 +335,13 @@ contract RentEscrow is ReentrancyGuard {
         _applyPenalty(vid);
     }
 
-    // ─── Internal: Penalty Tier (Fix 4) ──────────────────────────────────────────
+    // ─── Internal: Cumulative Penalty Tier ───────────────────────────────────────
 
-    function _computePenalty(uint256 decibels) internal pure returns (uint256) {
-        if (decibels > 100) return PENALTY_HIGH;
-        if (decibels > 85)  return PENALTY_MED;
-        return PENALTY_LOW;
+    /// @dev Returns the penalty amount based on the tenant's cumulative violation count.
+    function _computePenaltyByCount(uint256 count) internal pure returns (uint256) {
+        if (count <= 5)  return PENALTY_TIER1;
+        if (count <= 10) return PENALTY_TIER2;
+        return PENALTY_TIER3;
     }
 
     // ─── Internal: Penalty Application ───────────────────────────────────────────
@@ -346,20 +353,21 @@ contract RentEscrow is ReentrancyGuard {
         // Deduct from offender's free balance
         tenants[offender].deposit -= v.penaltyPaid;
 
-        // Fix 1 — distribute to recipients' LOCKED balance, not free balance.
-        // Rewards stay locked until the 24 h appeal window closes without an appeal
-        // (releaseRewards) or until an appeal is resolved (executeProposal).
-        uint256 rewardEach = v.penaltyPaid / (tenantCount - 1);
-
-        for (uint8 i = 0; i < MAX_ROOMS; i++) {
-            if (i != offender && tenants[i].registered) {
-                tenants[i].lockedDeposit += rewardEach;
+        // Distribute penalty to other tenants' LOCKED balance.
+        // If offender is the only tenant, skip distribution (no recipients).
+        uint256 rewardEach = 0;
+        if (tenantCount > 1) {
+            rewardEach = v.penaltyPaid / (tenantCount - 1);
+            for (uint8 i = 0; i < MAX_ROOMS; i++) {
+                if (i != offender && tenants[i].registered) {
+                    tenants[i].lockedDeposit += rewardEach;
+                }
             }
         }
 
         violationLocks[vid] = ViolationLock({
             rewardPerRecipient: rewardEach,
-            released:           false
+            released:           tenantCount <= 1  // nothing to release when no recipients
         });
 
         emit PenaltyApplied(vid, offender, v.penaltyPaid, rewardEach);

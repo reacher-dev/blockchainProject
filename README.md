@@ -108,21 +108,85 @@ flowchart LR
 
 ## Run the full local demo
 
-Start Anvil:
+### 一鍵啟動（macOS / Linux）
+
+```bash
+./start.sh
+```
+
+腳本會依序自動完成：
+
+1. 清除殘留程序（port 8545、8000）
+2. **啟動 Anvil** 本地節點（背景，port 8545）
+3. 等待 Anvil 就緒（2 秒）
+4. **部署合約**（`forge script`，使用 Anvil Account #0）
+5. 更新 `frontend/src/contract.json`（`node go.cjs`）
+6. **啟動後端 Oracle**（背景，port 8000，`ORACLE_SUBMIT_ONCHAIN=1`）
+7. **啟動前端** Vite dev server（前景，port 5173）
+
+按 `Ctrl+C` 自動關閉 Anvil 與 Oracle，前端同時結束。
+
+服務網址：
+
+```text
+Anvil    → http://127.0.0.1:8545
+Oracle   → http://127.0.0.1:8000
+Frontend → http://localhost:5173
+```
+
+MetaMask 本地網路設定：
+
+```text
+RPC URL:  http://127.0.0.1:8545
+Chain ID: 31337
+```
+
+### 登入流程
+
+1. 開啟 `http://localhost:5173`，點擊「連接 MetaMask」
+2. 系統從合約自動判斷身份：
+   - **房東**（`landlord()`）：首次登入需輸入暱稱，進入系統總覽
+   - **房客**（`isTenant()`）：直接進入我的房間
+   - **未登記**：唯讀瀏覽系統總覽
+3. `start.sh` 部署的合約房東為 Anvil Account #0：
+
+```text
+地址：0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+私鑰：0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
+```
+
+房客帳號（Anvil Account #1–#4，由房東在管理頁登記）：
+
+```text
+#1  0x70997970C51812dc3A010C7d01b50e0d17dc79C8
+#2  0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC
+#3  0x90F79bf6EB2c4f870365E785982E1f101E93b906
+#4  0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65
+```
+
+### 合約地址同步
+
+合約地址存在瀏覽器 localStorage。每次連接 MetaMask 時，前端會自動呼叫 `POST /contract/address` 通知後端，確保後端重啟後仍能正常上鏈。
+
+若重啟 `start.sh`（Anvil 重置），舊合約地址自動失效，前端會顯示「合約已失效」提示並跳回部署頁，重新建立即可。
+
+### 手動逐步啟動（Windows / 偵錯用）
+
+啟動 Anvil：
 
 ```powershell
 anvil
 ```
 
-Deploy the contract and export the ABI/address to the frontend:
+部署合約並更新前端 ABI：
 
 ```powershell
-$env:PRIVATE_KEY="<ANVIL_ACCOUNT_0_PRIVATE_KEY>"
+$env:PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
 forge script script/Deploy.s.sol --rpc-url http://127.0.0.1:8545 --broadcast
 node go.cjs
 ```
 
-Start the backend oracle relay:
+啟動後端 Oracle（需安裝依賴）：
 
 ```powershell
 python -m pip install web3 eth-account
@@ -131,25 +195,12 @@ $env:ORACLE_RPC_URL="http://127.0.0.1:8545"
 python hardware\web3_oracle.py
 ```
 
-Start the frontend:
+啟動前端：
 
 ```powershell
 cd frontend
 npm install
 npm run dev
-```
-
-Open:
-
-```text
-http://127.0.0.1:5173/
-```
-
-MetaMask local network:
-
-```text
-RPC URL:  http://127.0.0.1:8545
-Chain ID: 31337
 ```
 
 ## Pico W setup
@@ -210,8 +261,10 @@ python hardware\web3_oracle.py
 Send a simulated Pico payload:
 
 ```powershell
-python hardware\send_sample_payload.py --room "Room A" --decibels 82
+python hardware\send_sample_payload.py --room "林" --decibels 82
 ```
+
+房間別名（`--room` 參數）：`林` / `劉` / `鄭` / `吳` / `許`，或用 `Room A`–`E`，或用索引 `0`–`4`。
 
 Check latest backend state:
 
