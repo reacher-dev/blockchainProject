@@ -6,7 +6,8 @@
 
 | 層面 | 技術 | 說明 |
 |------|------|------|
-| DePIN | Raspberry Pi Pico W + INMP441 麥克風 | 實體感測器量測分貝，將噪音數據送往 Oracle |
+| DePIN | Raspberry Pi Pico W + INMP441 麥克風 | 實體感測器量測分貝與音訊串流，將數據送往 Oracle |
+| AI / ML | FFT 頻率分析 + Scikit-Learn | 在 Oracle 端對原始音訊進行 FFT 頻譜轉換，並以機器學習模型判斷噪音類型（如人聲、音樂等）|
 | DeFi | `RentEscrow.sol` 押金托管 | 押金鎖在合約，觸發違規自動扣款，申訴通過自動退款 |
 | DAO | Quadratic Voting 提案投票 | 房客與房東共同決議申訴案，防止多數暴力 |
 
@@ -18,13 +19,14 @@
 flowchart LR
     Mic["INMP441 麥克風"]
     Pico["Raspberry Pi Pico W MicroPython"]
-    Oracle["Python Oracle 後端 web3_oracle.py port 8000"]
+    Oracle["Python Oracle 後端 (web3_oracle.py, FFT 模組)"]
     Contract["RentEscrow.sol Anvil port 8545"]
     Frontend["React 前端 Vite port 5173"]
 
     Mic -->|I2S| Pico
-    Pico -->|"HTTP POST JSON every 0.1 sec"| Oracle
-    Oracle -->|"GET noise latest and history"| Frontend
+    Pico -->|"HTTP POST JSON every 0.1 sec\n+ Audio PCM Streaming"| Oracle
+    Oracle -->|"FFT 頻譜分析 & ML 聲音分類"| Oracle
+    Oracle -->|"GET noise latest & FFT demo"| Frontend
     Oracle -->|"reportNoise tx after 5 sec over 75 dB"| Contract
     Frontend -->|ethers.js| Contract
 ```
@@ -33,7 +35,7 @@ flowchart LR
 
 - **智能合約**：Solidity ^0.8.24、Foundry（forge / anvil）、OpenZeppelin（ECDSA、ReentrancyGuard）
 - **前端**：React 18、Vite、ethers.js，元件化角色分流（房東 / 房客 / 訪客）
-- **硬體 / Oracle**：Raspberry Pi Pico W、MicroPython、Python 3（`web3.py`）、INMP441 I2S 麥克風
+- **硬體 / Oracle**：Raspberry Pi Pico W、MicroPython、Python 3（`web3.py`、`NumPy`、`Scikit-learn`）、INMP441 I2S 麥克風，具備 FFT 頻率分析與音訊分類能力
 
 **後端 API 端點**
 
@@ -41,8 +43,10 @@ flowchart LR
 GET  http://127.0.0.1:8000/health
 GET  http://127.0.0.1:8000/noise/latest
 GET  http://127.0.0.1:8000/noise/history
+GET  http://127.0.0.1:8000/fft_demo/           # 即時 FFT 頻譜與聲音分類視覺化
 POST http://127.0.0.1:8000/noise/ingest
 POST http://127.0.0.1:8000/contract/address
+POST http://127.0.0.1:8000/api/mic-test/upload # 接收 Pico W 的音訊串流並進行分析
 ```
 
 ---
