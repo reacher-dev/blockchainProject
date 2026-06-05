@@ -17,15 +17,15 @@
 ```mermaid
 flowchart LR
     Mic["INMP441 麥克風"]
-    Pico["Raspberry Pi Pico W\n(MicroPython)"]
-    Oracle["Python Oracle 後端\nweb3_oracle.py\n:8000"]
-    Contract["RentEscrow.sol\nAnvil :8545"]
-    Frontend["React 前端\nVite :5173"]
+    Pico["Raspberry Pi Pico W MicroPython"]
+    Oracle["Python Oracle 後端 web3_oracle.py port 8000"]
+    Contract["RentEscrow.sol Anvil port 8545"]
+    Frontend["React 前端 Vite port 5173"]
 
     Mic -->|I2S| Pico
-    Pico -->|HTTP POST JSON\n每 0.1 秒| Oracle
-    Oracle -->|GET /noise/latest\nGET /noise/history| Frontend
-    Oracle -->|reportNoise() tx\n持續 5 秒 ≥ 75 dB| Contract
+    Pico -->|"HTTP POST JSON every 0.1 sec"| Oracle
+    Oracle -->|"GET noise latest and history"| Frontend
+    Oracle -->|"reportNoise tx after 5 sec over 75 dB"| Contract
     Frontend -->|ethers.js| Contract
 ```
 
