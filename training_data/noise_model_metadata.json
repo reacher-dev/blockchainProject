@@ -1,0 +1,78 @@
+{
+  "classification_report": {
+    "accuracy": 0.9702702702702702,
+    "background": {
+      "f1-score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 13.0
+    },
+    "car": {
+      "f1-score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 33.0
+    },
+    "human_voice": {
+      "f1-score": 0.9703504043126685,
+      "precision": 0.9782608695652174,
+      "recall": 0.9625668449197861,
+      "support": 187.0
+    },
+    "macro avg": {
+      "f1-score": 0.984708378734874,
+      "precision": 0.9838874680306905,
+      "recall": 0.9856168172598192,
+      "support": 370.0
+    },
+    "music": {
+      "f1-score": 0.9531914893617022,
+      "precision": 0.9411764705882353,
+      "recall": 0.9655172413793104,
+      "support": 116.0
+    },
+    "rain": {
+      "f1-score": 1.0,
+      "precision": 1.0,
+      "recall": 1.0,
+      "support": 21.0
+    },
+    "weighted avg": {
+      "f1-score": 0.9703398334389903,
+      "precision": 0.9705709545862998,
+      "recall": 0.9702702702702702,
+      "support": 370.0
+    }
+  },
+  "feature_columns": [
+    "peak_frequency_hz",
+    "peak_magnitude",
+    "low_band_energy",
+    "speech_band_energy",
+    "high_band_energy",
+    "low_percent",
+    "speech_percent",
+    "high_percent",
+    "spectral_centroid_hz",
+    "spectral_flatness",
+    "tonal_peak_ratio",
+    "zero_crossing_rate"
+  ],
+  "label_counts": {
+    "background": 52,
+    "car": 131,
+    "human_voice": 748,
+    "music": 464,
+    "rain": 85
+  },
+  "labels": [
+    "background",
+    "car",
+    "human_voice",
+    "music",
+    "rain"
+  ],
+  "model_type": "sklearn_random_forest_fft_features_v1",
+  "test_accuracy": 0.9703,
+  "train_accuracy": 0.9919
+}

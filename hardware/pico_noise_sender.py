@@ -1,5 +1,6 @@
 import sys
 import time
+import ubinascii
 import ujson
 from machine import I2S, Pin
 
@@ -7,10 +8,11 @@ from machine import I2S, Pin
 #            wifi = 透過 WiFi 直接 POST 到 Oracle
 TRANSPORT_MODE = "wifi"
 
-# WiFi 設定（TRANSPORT_MODE = "wifi" 時才需要）
-SSID = "YOUR_WIFI_SSID"
-PASSWORD = "YOUR_WIFI_PASSWORD"
-ORACLE_URL = "http://YOUR_HOST_IP:8000/noise/ingest"
+SSID = "Reacher"
+PASSWORD = "Reacher0513"
+ORACLE_URL = "http://172.20.10.13:8000/noise/ingest"
+AUDIO_UPLOAD_URL = "http://172.20.10.13:8000/api/audio/upload"
+MIC_TEST_UPLOAD_URL = "http://172.20.10.13:8000/api/mic-test/upload"
 WIFI_CONNECT_TIMEOUT_SECONDS = 35
 
 DEVICE_ID = "pico-w-001"
@@ -19,6 +21,16 @@ POST_INTERVAL_SECONDS = 0.1
 SENSOR_MODE = "inmp441"  # Use "simulation" when testing without the microphone.
 VIOLATION_DECIBEL_THRESHOLD = 75
 VIOLATION_REQUIRED_SECONDS = 5
+ENABLE_AUDIO_UPLOAD = False
+AUDIO_UPLOAD_INTERVAL_SECONDS = 5
+AUDIO_BUFFER_DURATION_MS = 250
+AUDIO_UPLOAD_TEST_MODE = False
+ENABLE_MIC_TEST_UPLOAD = True
+MIC_TEST_START_DECIBEL_THRESHOLD = 40
+MIC_TEST_CHUNK_DURATION_MS = 500
+MIC_TEST_WAV_SAMPLE_RATE = 8000
+MIC_TEST_CONTINUE_DECIBEL_THRESHOLD = 37
+MIC_TEST_SILENCE_STOP_SECONDS = 6
 
 # INMP441 I2S wiring. Change these pins if your Pico W wiring is different.
 INMP441_I2S_ID = 0
@@ -43,6 +55,12 @@ WIFI_STATUS_MESSAGES = {
 
 microphone_i2s = None
 noise_window = []
+last_audio_upload_at = 0
+mic_test_recording_active = False
+mic_test_session_id = None
+mic_test_chunk_index = 0
+mic_test_last_loud_at = 0
+last_mic_test_idle_log_at = 0
 
 
 def read_signed_32_le(buffer, offset):
@@ -139,6 +157,8 @@ def get_simulated_noise_reading(counter):
         "duration_seconds": POST_INTERVAL_SECONDS,
         "source": "simulation",
         "raw_peak_i2s": 0,
+        "audio_samples": [],
+        "audio_duration_ms": 0,
     }
 
 
@@ -180,6 +200,7 @@ def get_inmp441_noise_reading():
     shifted_sum = 0
     sample_count = 0
     audio_samples = []
+    max_audio_samples = int((INMP441_SAMPLE_RATE * AUDIO_BUFFER_DURATION_MS) / 1000)
 
     for offset in range(0, bytes_read - 3, 4):
         raw_sample = read_signed_32_le(sample_bytes, offset)
@@ -189,7 +210,8 @@ def get_inmp441_noise_reading():
 
         shifted_sample = raw_sample >> INMP441_SAMPLE_SHIFT
         shifted_sum += shifted_sample
-        audio_samples.append(max(-32768, min(32767, shifted_sample)))
+        if len(audio_samples) < max_audio_samples:
+            audio_samples.append(max(-32768, min(32767, shifted_sample)))
         sample_count += 1
 
     if sample_count == 0:
@@ -201,6 +223,7 @@ def get_inmp441_noise_reading():
             "source": "inmp441",
             "raw_peak_i2s": 0,
             "audio_samples": [],
+            "audio_duration_ms": 0,
         }
 
     mean = shifted_sum / sample_count
@@ -234,6 +257,7 @@ def get_inmp441_noise_reading():
         "centered_peak": int(centered_peak),
         "rms": int(rms),
         "audio_samples": audio_samples,
+        "audio_duration_ms": int((len(audio_samples) * 1000) / INMP441_SAMPLE_RATE),
     }
 
 
@@ -280,7 +304,7 @@ def build_violation_payload(counter):
     # Pico 只負責串流真實數值，違規判斷交給 Oracle
     audio_samples = reading.get("audio_samples", [])[:128]
 
-    return {
+    telemetry_payload = {
         "device_id": DEVICE_ID,
         "timestamp": now,
         "violation_details": {
@@ -297,6 +321,53 @@ def build_violation_payload(counter):
             "audio_sample_rate": INMP441_SAMPLE_RATE,
         },
     }
+
+    return telemetry_payload, reading, event_type
+
+
+def build_audio_upload_payload(reading, event_type, now):
+    samples = reading.get("audio_samples") or []
+    if noise_window:
+        average_db = sum(item["estimated_db"] for item in noise_window) / len(noise_window)
+        max_db = max(item["estimated_db"] for item in noise_window)
+    else:
+        average_db = reading["estimated_db"]
+        max_db = reading["estimated_db"]
+
+    return {
+        "room_id": CULPRIT_ROOM,
+        "device_id": DEVICE_ID,
+        "timestamp": now,
+        "sample_rate": INMP441_SAMPLE_RATE,
+        "duration_ms": reading.get("audio_duration_ms", 0),
+        "audio_format": "mono_s16le_pcm_json",
+        "samples": samples,
+        "current_db": reading["estimated_db"],
+        "average_db": average_db,
+        "max_db": max_db,
+        "violation": event_type == "violation",
+        "event_id": None,
+    }
+
+
+def should_upload_audio(reading, event_type, now):
+    global last_audio_upload_at
+
+    if not ENABLE_AUDIO_UPLOAD:
+        return False
+
+    samples = reading.get("audio_samples") or []
+    if not samples:
+        return False
+
+    if not AUDIO_UPLOAD_TEST_MODE and event_type != "violation":
+        return False
+
+    if now - last_audio_upload_at < AUDIO_UPLOAD_INTERVAL_SECONDS:
+        return False
+
+    last_audio_upload_at = now
+    return True
 
 
 def send_via_usb(payload):
@@ -316,15 +387,165 @@ def send_via_wifi(payload):
             response.close()
 
 
+def post_audio_upload(payload):
+    # Raw audio is only for future FFT/AI work. It is sent separately from dB
+    # telemetry so the normal monitoring flow remains small and unchanged.
+    headers = {"Content-Type": "application/json"}
+    response = None
+
+    try:
+        response = urequests.post(
+            AUDIO_UPLOAD_URL,
+            data=ujson.dumps(payload),
+            headers=headers,
+        )
+        print("Audio POST status:", response.status_code)
+        print("Audio POST response:", response.text)
+    finally:
+        if response is not None:
+            response.close()
+
+
+def capture_mic_test_buffer(duration_ms=500):
+    """
+    Captures a contiguous audio buffer (default 500ms).
+    Uses array.array with pre-allocation to prevent heap fragmentation and MemoryError.
+    """
+    import gc
+    import array
+    gc.collect()
+
+    global microphone_i2s
+    total_samples_needed = int((INMP441_SAMPLE_RATE * duration_ms) / 1000)
+    
+    # Pre-allocate array of signed 16-bit integers ('h') using a byte string
+    # 2 bytes per sample
+    try:
+        audio_samples = array.array('h', b'\x00' * (total_samples_needed * 2))
+    except MemoryError:
+        print("Failed to pre-allocate array, falling back to 250ms")
+        duration_ms = 250
+        total_samples_needed = int((INMP441_SAMPLE_RATE * duration_ms) / 1000)
+        audio_samples = array.array('h', b'\x00' * (total_samples_needed * 2))
+
+    if SENSOR_MODE == "simulation":
+        import math
+        print("Simulating mic test audio capture...")
+        capture_started_ms = time.ticks_ms()
+        for i in range(total_samples_needed):
+            val = int(8000 * math.sin(2 * math.pi * 440 * i / INMP441_SAMPLE_RATE) + 
+                      4000 * math.sin(2 * math.pi * 880 * i / INMP441_SAMPLE_RATE))
+            audio_samples[i] = max(-32768, min(32767, val))
+            if i % 1600 == 0:
+                time.sleep_ms(1)
+        capture_ended_ms = time.ticks_ms()
+        elapsed_ms = max(time.ticks_diff(capture_ended_ms, capture_started_ms), 1)
+        effective_sample_rate = int((len(audio_samples) * 1000) / elapsed_ms)
+        return audio_samples, elapsed_ms, effective_sample_rate, capture_started_ms, capture_ended_ms
+
+    if microphone_i2s is None:
+        microphone_i2s = I2S(
+            INMP441_I2S_ID,
+            sck=Pin(INMP441_SCK_PIN),
+            ws=Pin(INMP441_WS_PIN),
+            sd=Pin(INMP441_SD_PIN),
+            mode=I2S.RX,
+            bits=32,
+            format=I2S.MONO,
+            rate=INMP441_SAMPLE_RATE,
+            ibuf=INMP441_BUFFER_SIZE,
+        )
+
+    sample_bytes = bytearray(INMP441_BUFFER_SIZE)
+    index = 0
+    capture_started_ms = time.ticks_ms()
+    while index < total_samples_needed:
+        bytes_read = microphone_i2s.readinto(sample_bytes)
+        if bytes_read == 0:
+            time.sleep_ms(1)
+            continue
+        for offset in range(0, bytes_read - 3, 4):
+            raw_sample = read_signed_32_le(sample_bytes, offset)
+            shifted_sample = raw_sample >> INMP441_SAMPLE_SHIFT
+            audio_samples[index] = max(-32768, min(32767, shifted_sample))
+            index += 1
+            if index >= total_samples_needed:
+                break
+    capture_ended_ms = time.ticks_ms()
+    elapsed_ms = max(time.ticks_diff(capture_ended_ms, capture_started_ms), 1)
+    effective_sample_rate = int((len(audio_samples) * 1000) / elapsed_ms)
+    return (
+        audio_samples,
+        elapsed_ms,
+        effective_sample_rate,
+        capture_started_ms,
+        capture_ended_ms,
+    )
+
+
+def encode_pcm_base64(audio_samples):
+    try:
+        raw_pcm = audio_samples.tobytes()
+    except AttributeError:
+        raw_pcm = bytes(audio_samples)
+
+    encoded = ubinascii.b2a_base64(raw_pcm).strip()
+    try:
+        return encoded.decode("ascii")
+    except AttributeError:
+        return encoded
+
+
+def build_mic_test_payload(audio_samples, duration_ms, effective_sample_rate, session_id, chunk_index, is_final, capture_started_ms, capture_ended_ms):
+    return {
+        "device_id": DEVICE_ID,
+        "timestamp": int(time.time()),
+        "sample_rate": MIC_TEST_WAV_SAMPLE_RATE,
+        "hardware_sample_rate": INMP441_SAMPLE_RATE,
+        "measured_capture_sample_rate": effective_sample_rate,
+        "duration_ms": duration_ms,
+        "audio_format": "int16_pcm_base64",
+        "channels": 1,
+        "session_id": session_id,
+        "chunk_index": chunk_index,
+        "is_final": is_final,
+        "capture_started_ms": capture_started_ms,
+        "capture_ended_ms": capture_ended_ms,
+        "sample_count": len(audio_samples),
+        "pcm_base64": encode_pcm_base64(audio_samples),
+    }
+
+
+def post_mic_test(payload):
+    headers = {"Content-Type": "application/json"}
+    response = None
+    try:
+        response = urequests.post(
+            MIC_TEST_UPLOAD_URL,
+            data=ujson.dumps(payload),
+            headers=headers,
+        )
+        print("Mic test POST status:", response.status_code)
+        print("Mic test POST response:", response.text)
+    finally:
+        if response is not None:
+            response.close()
+
+
 def main():
-    if TRANSPORT_MODE == "wifi":
-        import network, ntptime, rp2
-        connect_wifi()
-        sync_time()
+    global mic_test_recording_active
+    global mic_test_session_id
+    global mic_test_chunk_index
+    global mic_test_last_loud_at
+    global last_mic_test_idle_log_at
+
+    connect_wifi()
+    sync_time()
 
     counter = 0
     while True:
-        payload = build_violation_payload(counter)
+        payload, reading, event_type = build_violation_payload(counter)
+        print("Sending:", payload)
 
         try:
             if TRANSPORT_MODE == "usb":
@@ -334,8 +555,85 @@ def main():
         except Exception as exc:
             print("Send failed:", exc)
 
+        now = int(time.time())
+        if should_upload_audio(reading, event_type, now):
+            audio_payload = build_audio_upload_payload(reading, event_type, now)
+            print("Sending audio sample count:", len(audio_payload["samples"]))
+            try:
+                post_audio_upload(audio_payload)
+            except Exception as exc:
+                print("Audio POST failed:", exc)
+
+        if ENABLE_MIC_TEST_UPLOAD:
+            starts_recording = reading["estimated_db"] >= MIC_TEST_START_DECIBEL_THRESHOLD
+            still_noisy = reading["estimated_db"] >= MIC_TEST_CONTINUE_DECIBEL_THRESHOLD
+
+            if starts_recording:
+                mic_test_last_loud_at = now
+                if not mic_test_recording_active:
+                    mic_test_recording_active = True
+                    mic_test_session_id = "{}-{}".format(DEVICE_ID, now)
+                    mic_test_chunk_index = 0
+                    print("Noise threshold crossed. Starting recording session:", mic_test_session_id)
+            elif mic_test_recording_active and still_noisy:
+                mic_test_last_loud_at = now
+            elif not mic_test_recording_active and now - last_mic_test_idle_log_at >= 2:
+                print(
+                    "Mic test waiting: estimated_db={} < start_threshold={}".format(
+                        reading["estimated_db"],
+                        MIC_TEST_START_DECIBEL_THRESHOLD,
+                    )
+                )
+                last_mic_test_idle_log_at = now
+
+            if mic_test_recording_active:
+                silence_expired = (
+                    not still_noisy
+                    and now - mic_test_last_loud_at >= MIC_TEST_SILENCE_STOP_SECONDS
+                )
+                try:
+                    import gc
+                    gc.collect()
+                    samples, actual_duration_ms, effective_sample_rate, capture_started_ms, capture_ended_ms = capture_mic_test_buffer(MIC_TEST_CHUNK_DURATION_MS)
+                    mic_test_payload = build_mic_test_payload(
+                        samples,
+                        actual_duration_ms,
+                        effective_sample_rate,
+                        mic_test_session_id,
+                        mic_test_chunk_index,
+                        silence_expired,
+                        capture_started_ms,
+                        capture_ended_ms,
+                    )
+                    print(
+                        "Sending recording chunk {} ({} samples, wav={} Hz, measured={} Hz, final={})".format(
+                            mic_test_chunk_index,
+                            len(samples),
+                            MIC_TEST_WAV_SAMPLE_RATE,
+                            effective_sample_rate,
+                            silence_expired,
+                        )
+                    )
+                    post_mic_test(mic_test_payload)
+                    mic_test_chunk_index += 1
+
+                    mic_test_payload = None
+                    samples = None
+                    gc.collect()
+
+                    if silence_expired:
+                        print("Recording session finished:", mic_test_session_id)
+                        mic_test_recording_active = False
+                        mic_test_session_id = None
+                        mic_test_chunk_index = 0
+                except Exception as exc:
+                    print("Mic test capture/upload failed:", exc)
+
         counter += 1
-        time.sleep(POST_INTERVAL_SECONDS)
+        if not (ENABLE_MIC_TEST_UPLOAD and mic_test_recording_active):
+            time.sleep(POST_INTERVAL_SECONDS)
 
 
 main()
+
+
