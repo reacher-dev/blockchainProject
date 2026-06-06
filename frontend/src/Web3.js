@@ -16,8 +16,13 @@ const CONTRACT_STORAGE_KEY = "depin_contract";
 export function getStoredContractAddress() {
   try {
     const raw = localStorage.getItem(CONTRACT_STORAGE_KEY);
-    return raw ? JSON.parse(raw).address : null;
-  } catch { return null; }
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.address) return parsed.address;
+    }
+  } catch { /* ignore */ }
+  // fallback: 使用 go.cjs 從最新 broadcast 寫入的地址
+  return contractData.address || null;
 }
 
 export function storeContractAddress(address) {

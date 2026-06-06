@@ -1,113 +1,115 @@
-import { ROOM_NAMES } from "../Web3.js";
-import MockControl from "./MockControl.jsx";
+import { useState } from 'react';
+import { ROOM_NAMES } from '../Web3.js';
+import MockControl from './MockControl.jsx';
 
-const S = { text: "#1e293b", muted: "#64748b", border: "#e2e8f0", card: "#ffffff" };
-const ROOM_LABELS = ["A", "B", "C", "D", "E"];
+const ROOM_LABELS = ['A', 'B', 'C', 'D', 'E'];
+const M = {
+  surface: '#f5f4f1', surface2: '#dddcda',
+  border: '#E4E7EC',
+  heading: '#0a0a0a', body: '#555555', muted: '#999999',
+};
+const CARD_SHADOW = '0 4px 6px -1px rgba(0,0,0,0.05), 0 2px 4px -1px rgba(0,0,0,0.03)';
 
-export default function AdminPanel({
-  account, isLandlord, contract, loading,
-  rooms, regRoom, setRegRoom, regAddr, setRegAddr, handleRegister, mockControlProps,
-}) {
-  if (!account) {
-    return (
-      <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, padding: 52, textAlign: "center", color: S.muted, fontSize: 18 }}>
-        請先連接 MetaMask
-      </div>
-    );
+function shortAddr(addr) {
+  if (!addr) return '';
+  return `${addr.slice(0, 6)}...${addr.slice(-4)}`;
+}
+
+function CopyBtn({ text }) {
+  const [copied, setCopied] = useState(false);
+  function handleCopy() {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
   }
+  return (
+    <button onClick={handleCopy} title={text}
+      style={{ marginLeft: 6, background: 'none', border: 'none', cursor: 'pointer', color: copied ? '#15803d' : '#aaa', fontSize: 13, padding: '0 2px', lineHeight: 1, verticalAlign: 'middle' }}>
+      {copied ? '✓' : '⎘'}
+    </button>
+  );
+}
 
-  if (!isLandlord) {
-    return (
-      <div style={{ background: S.card, border: `1px solid ${S.border}`, borderRadius: 16, padding: 52, textAlign: "center", fontSize: 18 }}>
-        <div style={{ fontWeight: 700, color: S.text, marginBottom: 8 }}>僅房東可操作管理功能</div>
-        <div style={{ color: S.muted }}>請使用房東帳號連接</div>
-      </div>
-    );
-  }
+const fieldStyle = {
+  width: '100%', padding: '9px 12px', height: 40,
+  background: '#ffffff', border: `1px solid ${M.border}`,
+  color: M.heading, fontSize: 14, outline: 'none',
+  boxSizing: 'border-box', transition: 'border-color 0.2s',
+  fontFamily: 'inherit',
+};
 
-  const inp = { padding: "10px 14px", border: `1px solid ${S.border}`, borderRadius: 8, fontSize: 17, background: S.card, color: S.text, width: "100%", boxSizing: "border-box" };
-  const btn = (bg) => ({ padding: "12px 20px", background: bg, color: "#fff", border: "none", borderRadius: 9, fontWeight: 700, fontSize: 17, cursor: loading ? "not-allowed" : "pointer", opacity: loading ? 0.6 : 1, width: "100%" });
-  const displayRooms = rooms?.length
-    ? rooms
-    : ROOM_NAMES.map((name, i) => ({ i, name, tenant: null, registered: false }));
+export default function AdminPanel({ account, isLandlord, contract, loading, rooms, regRoom, setRegRoom, regAddr, setRegAddr, handleRegister, mockControlProps }) {
+  if (!account) return <div style={{ background: M.surface, border: `1px solid ${M.border}`, boxShadow: CARD_SHADOW, padding: 52, textAlign: 'center', color: M.muted, fontSize: 15 }}>請先連接 MetaMask</div>;
+  if (!isLandlord) return (
+    <div style={{ background: M.surface, border: `1px solid ${M.border}`, boxShadow: CARD_SHADOW, padding: 52, textAlign: 'center' }}>
+      <div style={{ fontSize: 16, color: M.heading, marginBottom: 6 }}>僅房東可操作管理功能</div>
+      <div style={{ fontSize: 13, color: M.muted }}>請使用房東帳號連接</div>
+    </div>
+  );
+
+  const displayRooms = rooms?.length ? rooms : ROOM_NAMES.map((name, i) => ({ i, name, tenant: null, registered: false }));
+  const btnDisabled = loading || !contract || !regAddr.trim();
 
   return (
     <>
-      {/* Register tenant */}
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "1fr",
-          gap: 20,
-          marginBottom: 28
-        }}
-      >
-        <div
-          style={{
-            background: S.card,
-            border: `1px solid ${S.border}`,
-            borderRadius: 16,
-            padding: 28,
-            boxShadow: "0 1px 3px rgba(0,0,0,0.04)"
-          }}
-        >
-          <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 22 }}>
-            登記房客
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "160px 1fr 150px", gap: 12, alignItems: "end", marginBottom: 22 }}>
-            <label>
-              <div style={{ fontSize: 15, color: S.muted, marginBottom: 6 }}>房間</div>
-              <select
-                value={regRoom}
-                onChange={(e) => setRegRoom(Number(e.target.value))}
-                style={inp}
-              >
-                {ROOM_NAMES.map((name, i) => (
-                  <option key={name} value={i}>
-                    Room {ROOM_LABELS[i]} - {name}
-                  </option>
-                ))}
+      {/* Register */}
+      <div style={{ border: `1px solid ${M.border}`, background: M.surface, boxShadow: CARD_SHADOW, marginBottom: 24 }}>
+        <div style={{ padding: '16px 24px', borderBottom: `1px solid ${M.border}`, background: M.surface2 }}>
+          <div style={{ fontSize: 11, letterSpacing: '0.2em', color: M.muted, textTransform: 'uppercase' }}>登記房客</div>
+        </div>
+        <div style={{ padding: '28px 24px' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '160px 1fr auto', gap: 16, alignItems: 'end', marginBottom: 28 }}>
+            <div>
+              <div style={{ fontSize: 11, letterSpacing: '0.15em', color: '#667085', fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>房間</div>
+              <select value={regRoom} onChange={e => setRegRoom(Number(e.target.value))}
+                style={{ ...fieldStyle, appearance: 'none', backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23999' d='M6 8L1 3h10z'/%3E%3C/svg%3E\")", backgroundRepeat: 'no-repeat', backgroundPosition: 'right 10px center' }}>
+                {ROOM_NAMES.map((name, i) => <option key={name} value={i}>Room {ROOM_LABELS[i]} — {name}</option>)}
               </select>
-            </label>
-
-            <label>
-              <div style={{ fontSize: 15, color: S.muted, marginBottom: 6 }}>房客錢包地址</div>
-              <input
-                value={regAddr}
-                onChange={(e) => setRegAddr(e.target.value)}
-                placeholder="0x..."
-                style={inp}
-              />
-            </label>
-
-            <button
-              onClick={handleRegister}
-              disabled={loading || !contract || !regAddr.trim()}
-              style={btn("#3b82f6")}
-            >
+            </div>
+            <div>
+              <div style={{ fontSize: 11, letterSpacing: '0.15em', color: '#667085', fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>房客錢包地址</div>
+              <input value={regAddr} onChange={e => setRegAddr(e.target.value)} placeholder="0x..."
+                style={fieldStyle}
+                onFocus={e => { e.target.style.borderColor = '#0a0a0a'; }}
+                onBlur={e => { e.target.style.borderColor = M.border; }} />
+            </div>
+            <button onClick={handleRegister} disabled={btnDisabled}
+              style={{
+                height: 40, padding: '0 24px',
+                background: btnDisabled ? '#d0d0d0' : '#0a0a0a',
+                color: '#ffffff', border: 'none',
+                fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase',
+                cursor: btnDisabled ? 'default' : 'pointer',
+                whiteSpace: 'nowrap', transition: 'background 0.2s',
+                fontFamily: 'inherit',
+              }}
+              onMouseEnter={e => { if (!btnDisabled) e.target.style.background = '#333'; }}
+              onMouseLeave={e => { if (!btnDisabled) e.target.style.background = '#0a0a0a'; }}>
               登記
             </button>
           </div>
 
-          <div style={{ border: `1px solid ${S.border}`, borderRadius: 12, overflow: "hidden" }}>
+          {/* Table */}
+          <div style={{ border: `1px solid ${M.border}` }}>
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 1fr', background: '#ffffff', borderBottom: `1px solid ${M.border}` }}>
+              <div style={{ padding: '10px 16px', fontSize: 11, color: '#667085', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase' }}>房間</div>
+              <div style={{ padding: '10px 16px', fontSize: 11, color: '#667085', fontWeight: 600, letterSpacing: '0.12em', textTransform: 'uppercase' }}>地址</div>
+            </div>
             {displayRooms.map((room, idx) => (
-              <div
-                key={room.i}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "120px 1fr",
-                  gap: 12,
-                  padding: "12px 14px",
-                  borderTop: idx === 0 ? "none" : `1px solid ${S.border}`,
-                  background: room.registered ? "#f8fafc" : "#fff",
-                }}
-              >
-                <div style={{ fontWeight: 700, color: S.text }}>
-                  Room {ROOM_LABELS[room.i]}
-                </div>
-                <div style={{ color: room.registered ? S.text : S.muted, fontFamily: room.registered ? "monospace" : "inherit", wordBreak: "break-all" }}>
-                  {room.registered ? room.tenant : "尚未登記"}
+              <div key={room.i} style={{ display: 'grid', gridTemplateColumns: '100px 1fr', borderTop: idx > 0 ? `1px solid ${M.border}` : 'none', background: '#ffffff' }}>
+                <div style={{ padding: '12px 16px', fontSize: 13, fontWeight: 500, color: M.heading }}>Room {ROOM_LABELS[room.i]}</div>
+                <div style={{ padding: '12px 16px', fontSize: 13, display: 'flex', alignItems: 'center' }}>
+                  {room.registered ? (
+                    <>
+                      <span style={{ fontFamily: 'monospace', color: M.body }}>{shortAddr(room.tenant)}</span>
+                      <CopyBtn text={room.tenant} />
+                    </>
+                  ) : (
+                    <span style={{ display: 'inline-block', padding: '2px 8px', background: '#F9FAFB', border: `1px solid ${M.border}`, fontSize: 12, color: '#667085' }}>
+                      尚未登記
+                    </span>
+                  )}
                 </div>
               </div>
             ))}
@@ -115,16 +117,15 @@ export default function AdminPanel({
         </div>
       </div>
 
-      {/* Live dB monitor */}
-      <div style={{ fontWeight: 700, fontSize: 20, marginBottom: 14, color: S.text }}>
-        即時監測
+      {/* Monitor */}
+      <div style={{ border: `1px solid ${M.border}`, background: M.surface, boxShadow: CARD_SHADOW }}>
+        <div style={{ padding: '16px 24px', borderBottom: `1px solid ${M.border}`, background: M.surface2 }}>
+          <div style={{ fontSize: 11, letterSpacing: '0.2em', color: M.muted, textTransform: 'uppercase' }}>即時監測</div>
+        </div>
+        <div style={{ padding: '4px 0 0' }}>
+          <MockControl dbHistory={mockControlProps.dbHistory} backendNoise={mockControlProps.backendNoise} lastDb={mockControlProps.lastDb} />
+        </div>
       </div>
-
-      <MockControl
-        dbHistory={mockControlProps.dbHistory}
-        backendNoise={mockControlProps.backendNoise}
-        lastDb={mockControlProps.lastDb}
-      />
     </>
   );
 }

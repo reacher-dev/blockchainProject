@@ -2,6 +2,11 @@
 # 一鍵啟動: Anvil -> 部署合約 -> Oracle -> Frontend
 set -euo pipefail
 
+# 載入 nvm 並切換到 Node 22
+export NVM_DIR="$HOME/.nvm"
+[ -s "$NVM_DIR/nvm.sh" ] && source "$NVM_DIR/nvm.sh"
+nvm use 22 2>/dev/null || true
+
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 # Anvil Account #0 測試私鑰（僅用於本地開發）

@@ -1,15 +1,16 @@
-import network
-import ntptime
-import rp2
+import sys
 import time
 import ujson
-import urequests
 from machine import I2S, Pin
 
+# 傳輸模式：usb = 透過 USB 序列埠輸出給 Mac 橋接腳本
+#            wifi = 透過 WiFi 直接 POST 到 Oracle
+TRANSPORT_MODE = "wifi"
 
-SSID = "YOUR_WIFI_NAME"
+# WiFi 設定（TRANSPORT_MODE = "wifi" 時才需要）
+SSID = "YOUR_WIFI_SSID"
 PASSWORD = "YOUR_WIFI_PASSWORD"
-ORACLE_URL = "http://YOUR_WINDOWS_IP:8000/"
+ORACLE_URL = "http://YOUR_HOST_IP:8000/noise/ingest"
 WIFI_CONNECT_TIMEOUT_SECONDS = 35
 
 DEVICE_ID = "pico-w-001"
@@ -26,18 +27,18 @@ INMP441_WS_PIN = 11   # INMP441 WS / LRCL
 INMP441_SD_PIN = 12   # INMP441 SD / DOUT
 INMP441_SAMPLE_RATE = 16000
 INMP441_BUFFER_SIZE = 1024
-INMP441_SAMPLE_SHIFT = 14
-INMP441_NOISE_FLOOR = 8
-INMP441_LEVEL_SCALE = 450
+INMP441_SAMPLE_SHIFT = 15   # 提高 1 讓振幅縮小一半
+INMP441_NOISE_FLOOR = 20   # 過濾掉更多環境底噪
+INMP441_LEVEL_SCALE = 400  # 靈敏度係數
 
 
 WIFI_STATUS_MESSAGES = {
-    network.STAT_IDLE: "idle",
-    network.STAT_CONNECTING: "connecting",
-    network.STAT_WRONG_PASSWORD: "wrong password",
-    network.STAT_NO_AP_FOUND: "Wi-Fi network not found",
-    network.STAT_CONNECT_FAIL: "connection failed",
-    network.STAT_GOT_IP: "connected",
+    0: "idle",
+    1: "connecting",
+    -3: "wrong password",
+    -2: "Wi-Fi network not found",
+    -1: "connection failed",
+    3: "connected",
 }
 
 microphone_i2s = None
@@ -52,6 +53,7 @@ def read_signed_32_le(buffer, offset):
 
 
 def connect_wifi():
+    import network, rp2
     rp2.country("TW")
 
     wlan = network.WLAN(network.STA_IF)
@@ -111,6 +113,7 @@ def connect_wifi():
 
 
 def sync_time():
+    import ntptime
     print("Syncing time with NTP...")
 
     for attempt in range(1, 6):
@@ -176,6 +179,7 @@ def get_inmp441_noise_reading():
     raw_peak = 0
     shifted_sum = 0
     sample_count = 0
+    audio_samples = []
 
     for offset in range(0, bytes_read - 3, 4):
         raw_sample = read_signed_32_le(sample_bytes, offset)
@@ -185,6 +189,7 @@ def get_inmp441_noise_reading():
 
         shifted_sample = raw_sample >> INMP441_SAMPLE_SHIFT
         shifted_sum += shifted_sample
+        audio_samples.append(max(-32768, min(32767, shifted_sample)))
         sample_count += 1
 
     if sample_count == 0:
@@ -195,6 +200,7 @@ def get_inmp441_noise_reading():
             "duration_seconds": 1,
             "source": "inmp441",
             "raw_peak_i2s": 0,
+            "audio_samples": [],
         }
 
     mean = shifted_sum / sample_count
@@ -227,6 +233,7 @@ def get_inmp441_noise_reading():
         "raw_peak_i2s": raw_peak,
         "centered_peak": int(centered_peak),
         "rms": int(rms),
+        "audio_samples": audio_samples,
     }
 
 
@@ -263,80 +270,69 @@ def sustained_violation_ready(now):
     if duration < VIOLATION_REQUIRED_SECONDS:
         return False
 
-    for item in noise_window:
-        if item["estimated_db"] < VIOLATION_DECIBEL_THRESHOLD:
-            return False
-
-    return True
+    avg_db = sum(item["estimated_db"] for item in noise_window) / len(noise_window)
+    return avg_db > VIOLATION_DECIBEL_THRESHOLD
 
 
 def build_violation_payload(counter):
     reading = get_noise_reading(counter)
     now = int(time.time())
-    update_noise_window(reading, now)
-
-    should_report_violation = sustained_violation_ready(now)
-    display_db = reading["estimated_db"]
-
-    if should_report_violation:
-        report_db = reading["estimated_db"]
-        duration_seconds = VIOLATION_REQUIRED_SECONDS
-        event_type = "violation"
-        noise_window.clear()
-    else:
-        # Keep live sensor data visible, but stay below the contract threshold so
-        # a short spike does not create an on-chain penalty.
-        report_db = min(reading["estimated_db"], VIOLATION_DECIBEL_THRESHOLD - 1)
-        duration_seconds = POST_INTERVAL_SECONDS
-        event_type = "monitoring"
+    # Pico 只負責串流真實數值，違規判斷交給 Oracle
+    audio_samples = reading.get("audio_samples", [])[:128]
 
     return {
         "device_id": DEVICE_ID,
         "timestamp": now,
         "violation_details": {
             "culprit_room": CULPRIT_ROOM,
-            "peak_decibel": report_db,
-            "estimated_db": display_db,
+            "peak_decibel": reading["estimated_db"],
+            "estimated_db": reading["estimated_db"],
             "noise_level": reading["noise_level"],
             "raw_peak_i2s": reading["raw_peak_i2s"],
-            "duration_seconds": duration_seconds,
+            "duration_seconds": POST_INTERVAL_SECONDS,
             "source": reading["source"],
-            "event_type": event_type,
+            "event_type": "monitoring",
             "violation_required_seconds": VIOLATION_REQUIRED_SECONDS,
+            "audio_samples": audio_samples,
+            "audio_sample_rate": INMP441_SAMPLE_RATE,
         },
     }
 
 
-def post_violation(payload):
+def send_via_usb(payload):
+    # DATA: 前綴讓 Mac 橋接腳本辨識資料行，與 debug print 區隔
+    sys.stdout.write("DATA:" + ujson.dumps(payload) + "\n")
+
+
+def send_via_wifi(payload):
+    import urequests
     headers = {"Content-Type": "application/json"}
     response = None
-
     try:
-        response = urequests.post(
-            ORACLE_URL,
-            data=ujson.dumps(payload),
-            headers=headers,
-        )
+        response = urequests.post(ORACLE_URL, data=ujson.dumps(payload), headers=headers)
         print("POST status:", response.status_code)
-        print("POST response:", response.text)
     finally:
         if response is not None:
             response.close()
 
 
 def main():
-    connect_wifi()
-    sync_time()
+    if TRANSPORT_MODE == "wifi":
+        import network, ntptime, rp2
+        connect_wifi()
+        sync_time()
 
     counter = 0
     while True:
         payload = build_violation_payload(counter)
-        print("Sending:", payload)
 
         try:
-            post_violation(payload)
+            if TRANSPORT_MODE == "usb":
+                send_via_usb(payload)
+            else:
+                send_via_wifi(payload)
         except Exception as exc:
-            print("POST failed:", exc)
+            print("Send failed:", exc)
 
         counter += 1
         time.sleep(POST_INTERVAL_SECONDS)

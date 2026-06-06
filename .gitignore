@@ -1,3 +1,14 @@
 logs/
 hardware/__pycache__/
 *.pyc
+
+# Foundry local build artifacts
+broadcast/
+cache/
+out/
+
+# Local contract address (generated after each deploy)
+frontend/src/contract.json
+
+# Trained ML model (large binary)
+training_data/

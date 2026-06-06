@@ -9,6 +9,7 @@ HOST = "0.0.0.0"
 PORT = int(os.getenv("ORACLE_PORT", "8000"))
 NOISE_THRESHOLD_DB = 70
 AUTO_SUBMIT_ONCHAIN = os.getenv("ORACLE_SUBMIT_ONCHAIN", "0") == "1"
+LATEST_TTL = float(os.getenv("ORACLE_LATEST_TTL", "5"))  # 秒；0 = 不過期
 RPC_URL = os.getenv("ORACLE_RPC_URL", "http://127.0.0.1:8545")
 ORACLE_PRIVATE_KEY = os.getenv(
     "ORACLE_PRIVATE_KEY",
@@ -19,6 +20,10 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 CONTRACT_JSON_PATH = Path(
     os.getenv("CONTRACT_JSON_PATH", PROJECT_ROOT / "frontend" / "src" / "contract.json")
 )
+NOISE_MODEL_PATH = Path(
+    os.getenv("ORACLE_NOISE_MODEL_PATH", PROJECT_ROOT / "training_data" / "noise_model.joblib")
+)
+FFT_SAMPLE_LIMIT = int(os.getenv("ORACLE_FFT_SAMPLE_LIMIT", "8192"))
 
 ROOM_ALIASES = {
     "0": 0,
@@ -51,9 +56,146 @@ STATE = {
     "last_error": None,
 }
 
+NOISE_MODEL_CACHE = {"mtime": None, "payload": None}
+
+# 每個裝置的滑動視窗（用於 Oracle 端違規判斷）
+DEVICE_WINDOWS = {}    # device_id -> [{"timestamp": t, "db": db}, ...]
+DEVICE_COOLDOWN = {}   # device_id -> last_violation_timestamp
+
+VIOLATION_WINDOW_SECONDS = int(os.getenv("ORACLE_VIOLATION_WINDOW", "5"))
+VIOLATION_COOLDOWN_SECONDS = int(os.getenv("ORACLE_VIOLATION_COOLDOWN", "30"))
+
 # Runtime contract address — overrides the value in contract.json.
 # Set via POST /contract/address after frontend deploys the contract.
 RUNTIME_CONTRACT_ADDRESS = None
+
+
+# ─── ML 聲音分類 ──────────────────────────────────────────────────────────────
+
+def load_noise_model():
+    if not NOISE_MODEL_PATH.exists():
+        return None
+    try:
+        mtime = NOISE_MODEL_PATH.stat().st_mtime
+        if NOISE_MODEL_CACHE["payload"] is not None and NOISE_MODEL_CACHE["mtime"] == mtime:
+            return NOISE_MODEL_CACHE["payload"]
+        import joblib
+        payload = joblib.load(NOISE_MODEL_PATH)
+        NOISE_MODEL_CACHE["mtime"] = mtime
+        NOISE_MODEL_CACHE["payload"] = payload
+        return payload
+    except Exception as exc:
+        print(f"[ml] 無法載入模型 {NOISE_MODEL_PATH}: {exc}")
+        return None
+
+
+def predict_noise_type(sample_values, sample_rate):
+    """對 PCM 音訊樣本執行 FFT 特徵提取並呼叫 ML 模型分類。
+    回傳 dict 或 None（無模型或無法分類時）。
+    """
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+
+    if not sample_values or sample_rate <= 0:
+        return None
+
+    usable = sample_values[-FFT_SAMPLE_LIMIT:]
+    waveform = np.asarray(usable, dtype=np.float32) / 32768.0
+    waveform = waveform - np.mean(waveform)
+    if len(waveform) < 8:
+        return None
+
+    windowed = waveform * np.hamming(len(waveform))
+    spectrum = np.fft.rfft(windowed)
+    frequencies = np.fft.rfftfreq(len(windowed), d=1.0 / sample_rate)
+    magnitudes = np.abs(spectrum) / len(windowed)
+
+    def band_energy(lo, hi):
+        band = (frequencies >= lo) & (frequencies <= min(hi, sample_rate / 2))
+        return float(np.sum(np.square(magnitudes[band])))
+
+    audible = np.where(frequencies >= 20)[0]
+    peak_idx = int(audible[np.argmax(magnitudes[audible])]) if len(audible) else 0
+
+    low_e    = band_energy(20, 250)
+    speech_e = band_energy(300, 3400)
+    high_e   = band_energy(3400, 8000)
+    total_e  = low_e + speech_e + high_e + 1e-12
+
+    spectrum_sum = float(np.sum(magnitudes)) + 1e-12
+    centroid = float(np.sum(frequencies * magnitudes) / spectrum_sum)
+    geo_mean = float(np.exp(np.mean(np.log(magnitudes[1:] + 1e-12))))
+    ari_mean = float(np.mean(magnitudes[1:] + 1e-12))
+    flatness = geo_mean / ari_mean if ari_mean else 0.0
+    aud_mean = float(np.mean(magnitudes[audible])) if len(audible) else 0.0
+    tonal_ratio = float(magnitudes[peak_idx]) / aud_mean if aud_mean else 0.0
+    zcr = float(np.mean(np.abs(np.diff(np.signbit(waveform)))))
+
+    features = {
+        "peak_frequency_hz":  float(frequencies[peak_idx]),
+        "peak_magnitude":     float(magnitudes[peak_idx]),
+        "low_band_energy":    low_e,
+        "speech_band_energy": speech_e,
+        "high_band_energy":   high_e,
+        "low_percent":        low_e / total_e * 100,
+        "speech_percent":     speech_e / total_e * 100,
+        "high_percent":       high_e / total_e * 100,
+        "spectral_centroid_hz": centroid,
+        "spectral_flatness":  flatness,
+        "tonal_peak_ratio":   tonal_ratio,
+        "zero_crossing_rate": zcr,
+    }
+
+    payload = load_noise_model()
+    if not payload:
+        return None
+
+    try:
+        import numpy as np
+        cols = payload["feature_columns"]
+        model = payload["model"]
+        vec = np.asarray([[features[c] for c in cols]], dtype=np.float64)
+        predicted = str(model.predict(vec)[0])
+        confidence = None
+        if hasattr(model, "predict_proba"):
+            proba = model.predict_proba(vec)[0]
+            confidence = round(float(max(proba)), 4)
+        return {"soundType": predicted, "soundTypeConfidence": confidence}
+    except Exception as exc:
+        print(f"[ml] 分類失敗: {exc}")
+        return None
+
+
+def check_violation_window(device_id, db, now):
+    """維護每個裝置的滑動視窗，回傳 (should_submit, avg_db, window_secs)。"""
+    window = DEVICE_WINDOWS.setdefault(device_id, [])
+    window.append({"timestamp": now, "db": db})
+
+    # 移除超過視窗範圍的舊資料
+    cutoff = now - VIOLATION_WINDOW_SECONDS
+    DEVICE_WINDOWS[device_id] = [e for e in window if e["timestamp"] >= cutoff]
+    window = DEVICE_WINDOWS[device_id]
+
+    avg_db = round(sum(e["db"] for e in window) / len(window), 1) if window else db
+    window_secs = round(window[-1]["timestamp"] - window[0]["timestamp"], 1) if len(window) >= 2 else 0
+
+    if len(window) < 2 or window_secs < VIOLATION_WINDOW_SECONDS:
+        return False, avg_db, window_secs
+
+    if avg_db <= NOISE_THRESHOLD_DB:
+        return False, avg_db, window_secs
+
+    # 冷卻期：避免同一事件重複上鏈
+    last = DEVICE_COOLDOWN.get(device_id, 0)
+    if now - last < VIOLATION_COOLDOWN_SECONDS:
+        return False, avg_db, window_secs
+
+    DEVICE_COOLDOWN[device_id] = now
+    DEVICE_WINDOWS[device_id] = []  # 重置視窗
+    print(f"[violation] device={device_id} avg={avg_db:.1f}dB > {NOISE_THRESHOLD_DB}dB for {VIOLATION_WINDOW_SECONDS}s")
+    return True, avg_db, window_secs
 
 
 def room_to_index(room_name):
@@ -227,6 +369,12 @@ def validate_noise_violation(data):
     if violation_required_seconds is not None and not isinstance(violation_required_seconds, (int, float)):
         raise ValueError("violation_details.violation_required_seconds must be a number when provided")
 
+    # 可選：音訊樣本（用於 ML 分類）
+    audio_samples = details.get("audio_samples")
+    audio_sample_rate = details.get("audio_sample_rate")
+    if audio_samples is not None and not isinstance(audio_samples, list):
+        raise ValueError("violation_details.audio_samples must be a list when provided")
+
     return {
         "device_id": device_id,
         "timestamp": timestamp,
@@ -240,6 +388,8 @@ def validate_noise_violation(data):
             "violation_required_seconds": violation_required_seconds,
             "duration_seconds": duration_seconds,
             "source": source,
+            "audio_samples": audio_samples or [],
+            "audio_sample_rate": int(audio_sample_rate) if audio_sample_rate else 16000,
         },
     }
 
@@ -280,7 +430,10 @@ class OracleRequestHandler(BaseHTTPRequestHandler):
             return
 
         if self.path == "/noise/latest":
-            self._send_json(200, {"status": "success", "data": STATE["latest"]})
+            latest = STATE["latest"]
+            if latest and LATEST_TTL > 0 and time.time() - latest.get("receivedAt", 0) > LATEST_TTL:
+                latest = None
+            self._send_json(200, {"status": "success", "data": latest})
             return
 
         if self.path == "/noise/history":
@@ -377,12 +530,40 @@ class OracleRequestHandler(BaseHTTPRequestHandler):
                 )
                 return
 
+            # ML 聲音分類（有 audio_samples 時執行）
+            details_validated = validated_data["violation_details"]
+            audio_samples = details_validated.get("audio_samples") or []
+            audio_sample_rate = details_validated.get("audio_sample_rate", 16000)
+            if audio_samples:
+                ml_result = predict_noise_type(audio_samples, audio_sample_rate)
+                if ml_result:
+                    noise_event["soundType"] = ml_result["soundType"]
+                    noise_event["soundTypeConfidence"] = ml_result["soundTypeConfidence"]
+                    print(f"  sound_type: {ml_result['soundType']} (confidence={ml_result['soundTypeConfidence']})")
+                else:
+                    noise_event["soundType"] = None
+                    noise_event["soundTypeConfidence"] = None
+            else:
+                noise_event["soundType"] = None
+                noise_event["soundTypeConfidence"] = None
+
+            # Oracle 端違規判斷（滑動視窗平均分貝）
+            should_submit_raw, avg_db, window_secs = check_violation_window(
+                noise_event["deviceId"],
+                noise_event["estimatedDb"],
+                noise_event["receivedAt"],
+            )
+            should_submit = AUTO_SUBMIT_ONCHAIN and should_submit_raw
+            noise_event["reportAllowed"] = should_submit
+            noise_event["avgDb"] = avg_db
+            noise_event["windowSecs"] = window_secs
+
             onchain = {
                 "submitted": False,
-                "reason": "ORACLE_SUBMIT_ONCHAIN is not enabled",
+                "reason": "below threshold or cooldown" if AUTO_SUBMIT_ONCHAIN else "ORACLE_SUBMIT_ONCHAIN is not enabled",
             }
 
-            if AUTO_SUBMIT_ONCHAIN and noise_event["reportAllowed"]:
+            if should_submit:
                 try:
                     onchain = submit_onchain(noise_event)
                     STATE["last_error"] = None

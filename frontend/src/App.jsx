@@ -13,7 +13,7 @@ import Dashboard    from "./components/Dashboard.jsx";
 import AdminPanel   from "./components/AdminPanel.jsx";
 
 const SENSOR_API_URL = import.meta.env.VITE_SENSOR_API_URL || "http://127.0.0.1:8000";
-const S = { bg: "#f8fafc", text: "#1e293b", muted: "#64748b", border: "#e2e8f0", blue: "#3b82f6" };
+const S = { bg: "#e8e7e4", text: "#0a0a0a", muted: "#8a8a8a", border: "rgba(0,0,0,0.08)", borderStrong: "rgba(0,0,0,0.2)" };
 
 const TABS_LANDLORD = [
   { key: "myroom",   label: "我的房間" },
@@ -30,9 +30,9 @@ const TABS_UNKNOWN = [
 ];
 
 const MSG_STYLE = {
-  success: { bg: "#f0fdf4", color: "#15803d" },
-  warning: { bg: "#fefce8", color: "#854d0e" },
-  info:    { bg: "#f1f5f9", color: "#475569" },
+  success: { bg: "rgba(21,128,61,0.06)",  color: "#15803d" },
+  warning: { bg: "rgba(180,83,9,0.06)",   color: "#b45309" },
+  info:    { bg: "rgba(0,0,0,0.03)",      color: "#6a6a6a" },
 };
 
 const landlordKey = (addr) => `depin_landlord_${addr.toLowerCase()}`;
@@ -131,15 +131,17 @@ export default function App() {
         if (cancelled || !data) return;
         setBackendNoise(data);
         const currentDb = sensorDb(data);
-        if (data.timestamp !== lastBackendTimestamp.current) {
-          lastBackendTimestamp.current = data.timestamp;
+        // 用 receivedAt（Oracle 設的時間）比對，避免 Pico W USB 模式時間戳不準的問題
+        const eventKey = data.receivedAt ?? data.timestamp;
+        if (eventKey !== lastBackendTimestamp.current) {
+          lastBackendTimestamp.current = eventKey;
           if (Number.isFinite(currentDb)) setDbHistory(h => [...h.slice(1), currentDb]);
           if (data.reportAllowed) {
             setFlashRoom(Number(data.roomIndex));
             setTimeout(() => setFlashRoom(null), 2000);
           }
-          if (data.onchain?.submitted && data.timestamp !== lastChainSyncTimestamp.current && contractRef.current) {
-            lastChainSyncTimestamp.current = data.timestamp;
+          if (data.onchain?.submitted && eventKey !== lastChainSyncTimestamp.current && contractRef.current) {
+            lastChainSyncTimestamp.current = eventKey;
             setTimeout(() => loadAll(contractRef.current, providerRef.current, accountRef.current), 900);
           }
         }
@@ -152,15 +154,25 @@ export default function App() {
     return () => { cancelled = true; clearInterval(id); };
   }, []);
 
-  // ── Auto-execute expired proposals ───────────────────────────────────────
+  // ── Auto-execute expired proposals + 定期同步提案狀態 ────────────────────
   useEffect(() => {
     if (!contract) return;
     const timer = setInterval(async () => {
       try {
         const count = Number(await contract.proposalCount());
+        let anyExecuted = false;
         for (let i = 0; i < count; i++) {
-          try { const tx = await contract.executeProposal(i); await tx.wait(); await loadAll(); } catch { }
+          try {
+            const tx = await contract.executeProposal(i);
+            await tx.wait();
+            anyExecuted = true;
+          } catch { }
         }
+        // 不管有沒有新結案，每次都重載提案與違規清單，讓房客看到最新狀態
+        await Promise.all([
+          loadProposals(contractRef.current, accountRef.current),
+          loadViolations(contractRef.current),
+        ]);
       } catch (err) { console.error(err); }
     }, 10000);
     return () => clearInterval(timer);
@@ -424,8 +436,17 @@ export default function App() {
 
   async function handleRegister() {
     setLoading(true);
-    try { const tx = await contract.registerTenant(regRoom, regAddr); await tx.wait(); flash("success", `${ROOM_NAMES[regRoom]} 已登記`); await loadRooms(contract); }
-    catch { flash("warning", "登記失敗，請確認帳號與地址是否正確"); }
+    try {
+      const { ethers } = await import("ethers");
+      const addr = ethers.getAddress(regAddr.trim());
+      const tx = await contract.registerTenant(regRoom, addr);
+      await tx.wait();
+      flash("success", `${ROOM_NAMES[regRoom]} 已登記`);
+      await loadRooms(contract);
+    } catch (e) {
+      const reason = e?.reason || e?.shortMessage || e?.message || "未知錯誤";
+      flash("warning", `登記失敗：${reason.slice(0, 100)}`);
+    }
     setLoading(false);
   }
 
@@ -494,50 +515,69 @@ export default function App() {
     <div style={{ background: S.bg, minHeight: "100vh", color: S.text, fontFamily: "'Noto Sans TC', system-ui, sans-serif" }}>
 
       {/* Navbar */}
-      <nav style={{ position: "sticky", top: 0, zIndex: 50, background: "rgba(255,255,255,0.96)", backdropFilter: "blur(14px)", borderBottom: `1px solid ${S.border}`, padding: "0 36px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 64 }}>
-        <div style={{ fontWeight: 800, fontSize: 24, letterSpacing: "-0.5px" }}>
-          DePIN <span style={{ fontWeight: 300, color: S.muted }}>NoiseGov</span>
+      <nav style={{ position: "sticky", top: 0, zIndex: 50, background: "#1a1a1a", borderBottom: "1px solid rgba(255,255,255,0.06)", padding: "0 48px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 60 }}>
+        <div style={{ fontSize: 15, fontWeight: 300, letterSpacing: "0.08em", color: "#ffffff" }}>
+          DePIN <span style={{ color: "rgba(255,255,255,0.35)", fontWeight: 200 }}>NoiseGov</span>
         </div>
 
-        <div style={{ display: "flex", gap: 4 }}>
+        <div style={{ display: "flex", gap: 0 }}>
           {TABS.map(({ key, label }) => (
-            <button key={key} onClick={() => setTab(key)} style={{ padding: "7px 20px", borderRadius: 8, border: "none", cursor: "pointer", fontWeight: tab === key ? 700 : 400, background: tab === key ? S.text : "transparent", color: tab === key ? "#fff" : S.muted, fontSize: 17, transition: "all 0.15s" }}>
+            <button key={key} onClick={() => setTab(key)} style={{
+              position: "relative", padding: "0 20px", paddingBottom: 6, height: 60,
+              border: "none", cursor: "pointer", background: "transparent",
+              color: tab === key ? "#ffffff" : "rgba(255,255,255,0.4)",
+              fontSize: 11, fontWeight: 400,
+              letterSpacing: "0.15em", textTransform: "uppercase",
+              transition: "color 0.15s",
+            }}>
               {label}
+              {tab === key && (
+                <span style={{ position: "absolute", bottom: 0, left: "50%", transform: "translateX(-50%)", width: 28, height: 2, background: "rgba(255,255,255,0.75)" }} />
+              )}
             </button>
           ))}
         </div>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           {isLandlord && (
             <>
-              <div style={{ padding: "8px 18px", borderRadius: 999, border: "1.5px solid #86efac", background: "#f0fdf4", display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontWeight: 700, fontSize: 16, color: "#15803d" }}>{landlordName}</span>
-                <span style={{ fontSize: 13, color: "#4ade80", fontWeight: 500 }}>房東</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{landlordName}</span>
+                <span style={{ color: "rgba(255,255,255,0.2)", fontSize: 10 }}>·</span>
+                <span style={{ fontSize: 10, color: "#98A2B3" }}>房東</span>
               </div>
-              <button onClick={handleLogout} style={{ padding: "8px 16px", borderRadius: 999, border: `1.5px solid ${S.border}`, background: "transparent", color: S.muted, fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
+              <button onClick={handleLogout}
+                style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.4)", padding: "6px 16px", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer", transition: "all 0.2s" }}
+                onMouseEnter={e => { e.target.style.borderColor = "rgba(255,255,255,0.6)"; e.target.style.color = "#ffffff"; }}
+                onMouseLeave={e => { e.target.style.borderColor = "rgba(255,255,255,0.2)"; e.target.style.color = "rgba(255,255,255,0.4)"; }}>
                 登出
               </button>
             </>
           )}
-
           {!isLandlord && myRoom !== null && (
             <>
-              <div style={{ padding: "8px 18px", borderRadius: 999, border: "1.5px solid #86efac", background: "#f0fdf4", display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ fontWeight: 700, fontSize: 16, color: "#15803d" }}>{ROOM_NAMES[myRoom]}</span>
-                <span style={{ fontSize: 13, color: "#4ade80", fontWeight: 500 }}>房客</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, letterSpacing: "0.08em", textTransform: "uppercase" }}>
+                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.75)", fontWeight: 500 }}>{ROOM_NAMES[myRoom]}</span>
+                <span style={{ color: "rgba(255,255,255,0.2)", fontSize: 10 }}>·</span>
+                <span style={{ fontSize: 10, color: "#98A2B3" }}>房客</span>
               </div>
-              <button onClick={handleLogout} style={{ padding: "8px 16px", borderRadius: 999, border: `1.5px solid ${S.border}`, background: "transparent", color: S.muted, fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
+              <button onClick={handleLogout}
+                style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.4)", padding: "6px 16px", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer", transition: "all 0.2s" }}
+                onMouseEnter={e => { e.target.style.borderColor = "rgba(255,255,255,0.6)"; e.target.style.color = "#ffffff"; }}
+                onMouseLeave={e => { e.target.style.borderColor = "rgba(255,255,255,0.2)"; e.target.style.color = "rgba(255,255,255,0.4)"; }}>
                 登出
               </button>
             </>
           )}
-
           {isUnknown && (
             <>
-              <div style={{ padding: "8px 18px", borderRadius: 999, border: `1.5px solid ${S.border}`, background: "#f8fafc", color: S.muted, fontSize: 15, fontFamily: "monospace" }}>
+              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.35)", fontFamily: "monospace" }}>
                 {account.slice(0, 6)}...{account.slice(-4)}
               </div>
-              <button onClick={handleLogout} style={{ padding: "8px 16px", borderRadius: 999, border: `1.5px solid ${S.border}`, background: "transparent", color: S.muted, fontWeight: 600, fontSize: 15, cursor: "pointer" }}>
+              <button onClick={handleLogout}
+                style={{ background: "transparent", border: "1px solid rgba(255,255,255,0.2)", color: "rgba(255,255,255,0.4)", padding: "6px 16px", fontSize: 11, letterSpacing: "0.12em", textTransform: "uppercase", cursor: "pointer", transition: "all 0.2s" }}
+                onMouseEnter={e => { e.target.style.borderColor = "rgba(255,255,255,0.6)"; e.target.style.color = "#ffffff"; }}
+                onMouseLeave={e => { e.target.style.borderColor = "rgba(255,255,255,0.2)"; e.target.style.color = "rgba(255,255,255,0.4)"; }}>
                 登出
               </button>
             </>
@@ -547,25 +587,25 @@ export default function App() {
 
       {/* Message bar */}
       {msg && (
-        <div style={{ padding: "11px 36px", fontSize: 17, borderBottom: `1px solid ${S.border}`, background: (MSG_STYLE[msgType] || MSG_STYLE.info).bg, color: (MSG_STYLE[msgType] || MSG_STYLE.info).color }}>
+        <div style={{ padding: "12px 48px", fontSize: 13, borderBottom: `1px solid ${S.border}`, background: (MSG_STYLE[msgType] || MSG_STYLE.info).bg, color: (MSG_STYLE[msgType] || MSG_STYLE.info).color, letterSpacing: "0.03em" }}>
           {msg}
         </div>
       )}
 
-      <div style={{ maxWidth: 1060, margin: "0 auto", padding: "32px 24px" }}>
+      <div style={{ maxWidth: 1080, margin: "0 auto", padding: "40px 24px" }}>
         {isUnknown && (
-          <div style={{ background: "#fff", border: `1px solid ${S.border}`, borderRadius: 12, padding: "16px 22px", marginBottom: 24, color: S.muted, fontSize: 16 }}>
+          <div style={{ border: `1px solid ${S.border}`, padding: "14px 24px", marginBottom: 28, color: S.muted, fontSize: 13, letterSpacing: "0.03em" }}>
             您尚未入住，請聯繫房東登記後再使用完整功能。目前僅供唯讀瀏覽。
           </div>
         )}
 
-        {tab === "myroom"   && <MyRoom account={account} myRoom={myRoom} rooms={rooms} violations={violations} loading={loading} handleAppeal={handleAppeal} depAmt={depAmt} setDepAmt={setDepAmt} handleDeposit={handleDeposit} dbHistory={dbHistory} backendNoise={backendNoise} lastDb={lastDb} />}
+        {tab === "myroom"   && <MyRoom account={account} myRoom={myRoom} rooms={rooms} violations={violations} proposals={proposals} loading={loading} handleAppeal={handleAppeal} depAmt={depAmt} setDepAmt={setDepAmt} handleDeposit={handleDeposit} dbHistory={dbHistory} backendNoise={backendNoise} lastDb={lastDb} onRefresh={() => loadAll()} />}
         {tab === "dao"      && <DAOPanel account={account} loading={loading} proposals={proposals} handleVote={handleVote} handleExecute={handleExecute} qvCounts={qvCounts} setQvCounts={setQvCounts} />}
         {tab === "overview" && <Dashboard account={account} isLandlord={isLandlord} isUnknown={isUnknown} rooms={rooms} violations={violations} logs={logs} flashRoom={flashRoom} loadAll={() => loadAll()} />}
         {tab === "admin"    && <AdminPanel account={account} isLandlord={isLandlord} contract={contract} loading={loading} rooms={rooms} regRoom={regRoom} setRegRoom={setRegRoom} regAddr={regAddr} setRegAddr={setRegAddr} depAmt={depAmt} setDepAmt={setDepAmt} handleRegister={handleRegister} handleDeposit={handleDeposit} mockControlProps={mockControlProps} />}
       </div>
 
-      <footer style={{ marginTop: 56, borderTop: `1px solid ${S.border}`, textAlign: "center", padding: "24px", fontSize: 16, color: S.muted }}>
+      <footer style={{ marginTop: 80, borderTop: `1px solid ${S.border}`, textAlign: "center", padding: "28px 48px", fontSize: 11, color: S.muted, letterSpacing: "0.18em", textTransform: "uppercase" }}>
         DePIN · DeFi · DAO — 去中心化租屋噪音治理系統
       </footer>
     </div>
