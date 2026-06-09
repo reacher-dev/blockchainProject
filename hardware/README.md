@@ -499,11 +499,12 @@ Current configuration keys:
 
 ```python
 ENABLE_MIC_TEST_UPLOAD = True
-MIC_TEST_START_DECIBEL_THRESHOLD = 40
+MIC_TEST_START_DECIBEL_THRESHOLD = 75
 MIC_TEST_CHUNK_DURATION_MS = 500
-MIC_TEST_WAV_SAMPLE_RATE = 8000
-MIC_TEST_CONTINUE_DECIBEL_THRESHOLD = 37
-MIC_TEST_SILENCE_STOP_SECONDS = 6
+MIC_TEST_WAV_SAMPLE_RATE = 9000
+MIC_TEST_CONTINUE_DECIBEL_THRESHOLD = 70
+MIC_TEST_SILENCE_STOP_SECONDS = 3
+MIC_TEST_FORCE_RECORD_SECONDS = 0
 ```
 
 Behavior:
@@ -512,7 +513,7 @@ Behavior:
 2. The Pico captures 500 ms PCM chunks.
 3. Chunks are base64-encoded and posted to `/api/mic-test/upload`.
 4. Chunks with the same `session_id` are appended to one WAV file.
-5. Recording stops after six seconds below the continue threshold.
+5. Recording stops after three seconds below the continue threshold.
 6. Each uploaded chunk updates the FFT and model result.
 
 Run the Windows mic test:
@@ -520,6 +521,15 @@ Run the Windows mic test:
 ```powershell
 powershell -ExecutionPolicy Bypass -File hardware\run_mic_test.ps1 -Port COM3
 ```
+
+To collect quiet background training data, force a short recording window:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File hardware\run_mic_test.ps1 -Port COM3 -BackgroundSeconds 10
+```
+
+Keep the room quiet during that window, then label the latest chunk as `background`
+on the FFT demo page.
 
 The script opens:
 
@@ -548,9 +558,8 @@ The FFT page provides label buttons for:
 
 - `human_voice`
 - `music`
-- `rain`
-- `car`
-- `other_noise`
+- `impact_noise`
+- `environment_noise`
 - `background`
 
 When a label is submitted, the relay:
@@ -562,6 +571,18 @@ Train a new model:
 
 ```powershell
 python hardware\train_noise_model.py
+```
+
+Review low-confidence or mismatched training rows:
+
+```powershell
+python hardware\review_low_confidence.py --threshold 0.7 --limit 100
+```
+
+Then open:
+
+```text
+training_data/low_confidence_review.html
 ```
 
 Outputs:
@@ -726,12 +747,110 @@ in-memory model cache.
 
 The FFT page still shows `rule_sound_type` when the model cannot load.
 
+## Final Noise Model Deployment
+
+The deployed model is `training_data/noise_model.joblib`.
+
+It is trained with five fine labels:
+
+- `human_voice`
+- `music`
+- `impact_noise`
+- `environment_noise`
+- `background`
+
+For deployment, the backend reports the more stable three-group result:
+
+- `human_created_noise` = `human_voice` + `music` + `impact_noise`
+- `environment_noise`
+- `background`
+
+Current final metrics:
+
+```text
+5-class test accuracy: 0.8205
+3-group deployed accuracy: 0.9231
+```
+
+The 3-group result is the one intended for the dashboard/backend final display.
+The 5-class model output is still kept internally as `model_sound_type`.
+
+### Instant Final Model Test Page
+
+Use this isolated page when you only want to test the deployed model with Pico W
+live microphone chunks:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File hardware\run_instant_model_test.ps1 -Port COM3
+```
+
+For quiet background testing, force a fixed recording window so the Pico uploads
+audio even when the dB threshold is not crossed:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File hardware\run_instant_model_test.ps1 -Port COM3 -BackgroundSeconds 10
+```
+
+The script opens:
+
+```text
+http://127.0.0.1:8000/instant_noise_test/
+```
+
+The page reads `/api/instant/latest`, hides stale FFT chunks after 5 seconds,
+and displays only the deployed 3-group result:
+
+- `human_created_noise`
+- `environment_noise`
+- `background`
+
+The React DePIN frontend also polls `/api/instant/latest` and merges fresh model
+results into its live noise card. When the model result is based on a fresh
+audio chunk, the frontend shows a `live` marker and keeps the fine label for
+debugging.
+
+### Full Project One-Line Launcher
+
+Use the root launcher to start Anvil, deploy the contract, start the backend and
+frontend, and run the Pico W in one command.
+
+Windows:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\run_all.ps1 -Port COM3 -WifiSsid "YOUR_WIFI" -WifiPassword "YOUR_PASSWORD"
+```
+
+macOS:
+
+```bash
+./run_all.sh --port /dev/cu.usbmodemXXXX --wifi-ssid "YOUR_WIFI" --wifi-password "YOUR_PASSWORD"
+```
+
+See `RUN_PROJECT.md` for prerequisites, environment-variable credentials, and
+manual host-IP overrides.
+
+The launcher opens:
+
+```text
+http://127.0.0.1:5173/
+http://127.0.0.1:8000/instant_noise_test/
+```
+
 ### Microphone readings are zero or constant
 
 - Recheck `SCK`, `WS`, `SD`, `VDD`, `GND`, and `L/R`.
 - Confirm `SENSOR_MODE = "inmp441"`.
 - Confirm the MicroPython build supports `machine.I2S`.
 - Inspect `raw_peak_i2s`, `centered_peak`, and `rms` in the Pico console.
+- Run the standalone Pico I2S probe:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File hardware\run_i2s_probe.ps1 -Port COM3
+```
+
+If the probe ends with `NO_SIGNAL_FOUND`, the backend and model are not the
+problem. Check the INMP441 power, common ground, `L/R -> GND`, and the
+`SCK=GP10`, `WS=GP11`, `SD=GP12` connections before running the probe again.
 
 ### Relay receives data but does not submit on-chain
 

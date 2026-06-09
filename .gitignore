@@ -8,3 +8,7 @@ training_data/*
 !training_data/noise_model.joblib
 !training_data/noise_model_metadata.json
 hardware/noise_events.jsonl
+.env
+.env.*
+!.env.example
+.pico_runtime_*
