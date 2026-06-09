@@ -1,49 +1,55 @@
 {
   "classification_report": {
-    "accuracy": 0.9702702702702702,
+    "accuracy": 0.8205128205128205,
     "background": {
-      "f1-score": 1.0,
-      "precision": 1.0,
+      "f1-score": 0.9565217391304348,
+      "precision": 0.9166666666666666,
       "recall": 1.0,
-      "support": 13.0
+      "support": 11.0
     },
-    "car": {
-      "f1-score": 1.0,
-      "precision": 1.0,
+    "environment_noise": {
+      "f1-score": 0.8,
+      "precision": 0.6666666666666666,
       "recall": 1.0,
-      "support": 33.0
+      "support": 4.0
     },
     "human_voice": {
-      "f1-score": 0.9703504043126685,
-      "precision": 0.9782608695652174,
-      "recall": 0.9625668449197861,
-      "support": 187.0
+      "f1-score": 0.8333333333333334,
+      "precision": 0.9090909090909091,
+      "recall": 0.7692307692307693,
+      "support": 13.0
+    },
+    "impact_noise": {
+      "f1-score": 0.6666666666666666,
+      "precision": 0.75,
+      "recall": 0.6,
+      "support": 5.0
     },
     "macro avg": {
-      "f1-score": 0.984708378734874,
-      "precision": 0.9838874680306905,
-      "recall": 0.9856168172598192,
-      "support": 370.0
+      "f1-score": 0.7846376811594202,
+      "precision": 0.7818181818181817,
+      "recall": 0.8071794871794872,
+      "support": 39.0
     },
     "music": {
-      "f1-score": 0.9531914893617022,
-      "precision": 0.9411764705882353,
-      "recall": 0.9655172413793104,
-      "support": 116.0
-    },
-    "rain": {
-      "f1-score": 1.0,
-      "precision": 1.0,
-      "recall": 1.0,
-      "support": 21.0
+      "f1-score": 0.6666666666666666,
+      "precision": 0.6666666666666666,
+      "recall": 0.6666666666666666,
+      "support": 6.0
     },
     "weighted avg": {
-      "f1-score": 0.9703398334389903,
-      "precision": 0.9705709545862998,
-      "recall": 0.9702702702702702,
-      "support": 370.0
+      "f1-score": 0.817651430694909,
+      "precision": 0.8286713286713285,
+      "recall": 0.8205128205128205,
+      "support": 39.0
     }
   },
+  "deployed_labels": [
+    "background",
+    "environment_noise",
+    "human_created_noise"
+  ],
+  "deployment_mode": "grouped_noise_type_v1",
   "feature_columns": [
     "peak_frequency_hz",
     "peak_magnitude",
@@ -58,21 +64,32 @@
     "tonal_peak_ratio",
     "zero_crossing_rate"
   ],
+  "grouped_test_accuracy": 0.9231,
   "label_counts": {
-    "background": 52,
-    "car": 131,
-    "human_voice": 748,
-    "music": 464,
-    "rain": 85
+    "background": 45,
+    "environment_noise": 14,
+    "human_voice": 50,
+    "impact_noise": 21,
+    "music": 24
+  },
+  "label_weight_multipliers": {
+    "environment_noise": 6.0
   },
   "labels": [
     "background",
-    "car",
+    "environment_noise",
     "human_voice",
-    "music",
-    "rain"
+    "impact_noise",
+    "music"
   ],
   "model_type": "sklearn_random_forest_fft_features_v1",
-  "test_accuracy": 0.9703,
-  "train_accuracy": 0.9919
+  "noise_group_by_label": {
+    "background": "background",
+    "environment_noise": "environment_noise",
+    "human_voice": "human_created_noise",
+    "impact_noise": "human_created_noise",
+    "music": "human_created_noise"
+  },
+  "test_accuracy": 0.8205,
+  "train_accuracy": 1.0
 }
