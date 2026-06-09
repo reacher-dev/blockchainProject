@@ -72,17 +72,28 @@ FFT_CHART_POINT_LIMIT = int(os.getenv("ORACLE_FFT_CHART_POINT_LIMIT", "600"))
 FFT_SAMPLE_LIMIT = int(os.getenv("ORACLE_FFT_SAMPLE_LIMIT", "8192"))
 TRAINING_DATA_DIR = PROJECT_ROOT / "training_data"
 NOISE_MODEL_PATH = Path(os.getenv("ORACLE_NOISE_MODEL_PATH", TRAINING_DATA_DIR / "noise_model.joblib"))
+NOISE_MODEL_METADATA_PATH = TRAINING_DATA_DIR / "noise_model_metadata.json"
 NOISE_MODEL_CACHE = {"mtime": None, "payload": None}
+INSTANT_FFT_STALE_SECONDS = int(os.getenv("ORACLE_INSTANT_FFT_STALE_SECONDS", "5"))
 TRAINING_LABELS = {
     "human_voice",
     "music",
-    "rain",
-    "car",
-    "other_noise",
+    "impact_noise",
+    "environment_noise",
     "background",
 }
-
-NOISE_MODEL_CACHE = {"mtime": None, "payload": None}
+NOISE_GROUP_BY_LABEL = {
+    "human_voice": "human_created_noise",
+    "music": "human_created_noise",
+    "impact_noise": "human_created_noise",
+    "environment_noise": "environment_noise",
+    "background": "background",
+}
+DEPLOYED_NOISE_GROUPS = {
+    "human_created_noise",
+    "environment_noise",
+    "background",
+}
 
 # 每個裝置的滑動視窗（用於 Oracle 端違規判斷）
 DEVICE_WINDOWS = {}    # device_id -> [{"timestamp": t, "db": db}, ...]
@@ -249,7 +260,7 @@ def calculate_fft_demo(sample_values, sample_rate, wav_filename=None):
     }
     model_prediction = predict_noise_model(feature_values)
     if model_prediction:
-        sound_type = model_prediction["sound_type"]
+        sound_type = model_prediction["noise_group"]
 
     chart_indices = np.arange(len(frequencies))
     if len(chart_indices) > FFT_CHART_POINT_LIMIT:
@@ -275,8 +286,10 @@ def calculate_fft_demo(sample_values, sample_rate, wav_filename=None):
         "tonal_peak_ratio": round(tonal_peak_ratio, 2),
         "zero_crossing_rate": round(zero_crossing_rate, 4),
         "sound_type": sound_type,
+        "noise_group": sound_type,
         "rule_sound_type": rule_sound_type,
         "model_sound_type": model_prediction["sound_type"] if model_prediction else None,
+        "model_noise_group": model_prediction["noise_group"] if model_prediction else None,
         "model_confidence": model_prediction["confidence"] if model_prediction else None,
         "frequencies_hz": [round(float(frequencies[i]), 2) for i in chart_indices],
         "magnitudes": [round(float(magnitudes[i]), 8) for i in chart_indices],
@@ -411,12 +424,120 @@ def predict_noise_model(feature_values):
             confidence = float(max(probabilities))
         return {
             "sound_type": predicted,
+            "noise_group": NOISE_GROUP_BY_LABEL.get(predicted, predicted),
             "confidence": round(confidence, 4) if confidence is not None else None,
             "model_path": str(NOISE_MODEL_PATH),
         }
     except Exception as exc:
         print(f"Noise model prediction failed: {exc}")
         return None
+
+
+def check_violation_window(device_id, db, now):
+    """維護每個裝置的滑動視窗，回傳 (should_submit, avg_db, window_secs)。"""
+    window = DEVICE_WINDOWS.setdefault(device_id, [])
+    window.append({"timestamp": now, "db": db})
+
+    # 移除超過視窗範圍的舊資料
+    cutoff = now - VIOLATION_WINDOW_SECONDS
+    DEVICE_WINDOWS[device_id] = [e for e in window if e["timestamp"] >= cutoff]
+    window = DEVICE_WINDOWS[device_id]
+
+    avg_db = round(sum(e["db"] for e in window) / len(window), 1) if window else db
+    window_secs = round(window[-1]["timestamp"] - window[0]["timestamp"], 1) if len(window) >= 2 else 0
+
+    if len(window) < 2 or window_secs < VIOLATION_WINDOW_SECONDS:
+        return False, avg_db, window_secs
+
+    if avg_db <= NOISE_THRESHOLD_DB:
+        return False, avg_db, window_secs
+
+    # 冷卻期：避免同一事件重複上鏈
+    last = DEVICE_COOLDOWN.get(device_id, 0)
+    if now - last < VIOLATION_COOLDOWN_SECONDS:
+        return False, avg_db, window_secs
+
+    DEVICE_COOLDOWN[device_id] = now
+    DEVICE_WINDOWS[device_id] = []  # 重置視窗
+    print(f"[violation] device={device_id} avg={avg_db:.1f}dB > {NOISE_THRESHOLD_DB}dB for {VIOLATION_WINDOW_SECONDS}s")
+    return True, avg_db, window_secs
+
+
+def predict_noise_type(audio_samples, sample_rate):
+    """Classify short uploaded audio using the deployed FFT feature model.
+
+    The model is trained with 5 fine labels, but deployment reports the stable
+    3-group label because human_voice/music/impact_noise are intentionally
+    treated as the same final category for this project.
+    """
+    fft_result = calculate_fft_demo(audio_samples, sample_rate)
+    if not fft_result.get("available"):
+        return None
+
+    confidence = fft_result.get("model_confidence")
+    return {
+        "soundType": fft_result.get("noise_group") or fft_result.get("sound_type"),
+        "soundTypeConfidence": confidence,
+        "modelSoundType": fft_result.get("model_sound_type"),
+    }
+
+
+def get_noise_model_status():
+    metadata = None
+    if NOISE_MODEL_METADATA_PATH.exists():
+        try:
+            metadata = json.loads(NOISE_MODEL_METADATA_PATH.read_text(encoding="utf-8"))
+        except Exception as exc:
+            metadata = {"error": str(exc)}
+
+    return {
+        "model_path": str(NOISE_MODEL_PATH),
+        "model_exists": NOISE_MODEL_PATH.exists(),
+        "metadata_path": str(NOISE_MODEL_METADATA_PATH),
+        "deployment_mode": (metadata or {}).get("deployment_mode"),
+        "deployed_labels": (metadata or {}).get("deployed_labels", sorted(DEPLOYED_NOISE_GROUPS)),
+        "test_accuracy": (metadata or {}).get("test_accuracy"),
+        "grouped_test_accuracy": (metadata or {}).get("grouped_test_accuracy"),
+        "noise_group_by_label": (metadata or {}).get("noise_group_by_label", NOISE_GROUP_BY_LABEL),
+    }
+
+
+def get_instant_noise_snapshot():
+    now = int(time.time())
+    latest_noise = STATE.get("latest")
+    latest_fft = STATE.get("latest_fft")
+    fft_age_seconds = None
+    fft_is_fresh = False
+
+    if latest_fft and latest_fft.get("created_at"):
+        fft_age_seconds = max(now - int(latest_fft["created_at"]), 0)
+        fft_is_fresh = fft_age_seconds <= INSTANT_FFT_STALE_SECONDS
+
+    if latest_fft and latest_fft.get("available") and fft_is_fresh:
+        sound_type = latest_fft.get("noise_group") or latest_fft.get("sound_type")
+        message = "fresh audio chunk classified"
+    elif latest_fft and latest_fft.get("available"):
+        sound_type = None
+        message = "latest audio chunk is stale; waiting for a new Pico upload"
+    else:
+        sound_type = None
+        message = "waiting for first audio chunk"
+
+    return {
+        "ok": True,
+        "message": message,
+        "now": now,
+        "stale_after_seconds": INSTANT_FFT_STALE_SECONDS,
+        "fft_age_seconds": fft_age_seconds,
+        "fft_fresh": fft_is_fresh,
+        "sound_type": sound_type,
+        "sound_type_confidence": latest_fft.get("model_confidence") if latest_fft and fft_is_fresh else None,
+        "model_sound_type": latest_fft.get("model_sound_type") if latest_fft and fft_is_fresh else None,
+        "peak_frequency_hz": latest_fft.get("peak_frequency_hz") if latest_fft and fft_is_fresh else None,
+        "noise": latest_noise,
+        "fft": latest_fft,
+        "model": get_noise_model_status(),
+    }
 
 
 def room_to_index(room_name):
@@ -799,6 +920,14 @@ class OracleRequestHandler(BaseHTTPRequestHandler):
             self._send_json(200, {"status": "success", "data": history[-50:]})
             return
 
+        if path == "/api/model/status":
+            self._send_json(200, {"ok": True, "data": get_noise_model_status()})
+            return
+
+        if path == "/api/instant/latest":
+            self._send_json(200, {"ok": True, "data": get_instant_noise_snapshot()})
+            return
+
         if path == "/api/fft/latest":
             latest_fft = STATE.get("latest_fft")
             if latest_fft is None:
@@ -971,9 +1100,8 @@ class OracleRequestHandler(BaseHTTPRequestHandler):
         <div class="label-actions">
             <button onclick="saveLabel('human_voice')">human_voice</button>
             <button onclick="saveLabel('music')">music</button>
-            <button onclick="saveLabel('rain')">rain</button>
-            <button onclick="saveLabel('car')">car</button>
-            <button onclick="saveLabel('other_noise')">other_noise</button>
+            <button onclick="saveLabel('impact_noise')">impact_noise</button>
+            <button onclick="saveLabel('environment_noise')">environment_noise</button>
             <button onclick="saveLabel('background')">background</button>
         </div>
         <div id="labelStatus"></div>
@@ -1170,6 +1298,30 @@ setInterval(() => loadFFT(false), 1000);
 </body>
 </html>
 """
+            response = html.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self._send_cors_headers()
+            self.send_header("Content-Length", str(len(response)))
+            self.end_headers()
+            self.wfile.write(response)
+            return
+
+        if path == "/instant_noise_test" or path == "/instant_noise_test/":
+            html_path = Path(__file__).with_name("instant_noise_test.html")
+            try:
+                html = html_path.read_text(encoding="utf-8")
+            except OSError as exc:
+                self._send_json(
+                    500,
+                    {
+                        "status": "error",
+                        "message": "instant_noise_test.html not found",
+                        "detail": str(exc),
+                    },
+                )
+                return
+
             response = html.encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")

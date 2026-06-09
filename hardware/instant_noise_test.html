@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="zh-TW">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Instant Noise Model Test</title>
+  <style>
+    :root {
+      --bg: #f5f4f1;
+      --panel: #ffffff;
+      --line: #dedbd4;
+      --text: #151515;
+      --muted: #6b6b6b;
+      --red: #c0392b;
+      --blue: #0369a1;
+      --gray: #777777;
+      --amber: #b45309;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Arial, "Noto Sans TC", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    main { width: min(1120px, calc(100vw - 32px)); margin: 24px auto; }
+    header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+    h1 { font-size: 24px; margin: 0 0 6px; letter-spacing: 0; }
+    .sub { color: var(--muted); font-size: 13px; }
+    button {
+      border: 1px solid #111;
+      background: #111;
+      color: #fff;
+      padding: 9px 14px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    .grid { display: grid; grid-template-columns: 1.2fr 0.8fr; gap: 16px; }
+    .panel { background: var(--panel); border: 1px solid var(--line); padding: 18px; }
+    .status-row {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 14px;
+    }
+    .metric { border: 1px solid var(--line); padding: 12px; min-height: 74px; }
+    .label {
+      color: var(--muted);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 8px;
+    }
+    .value { font-size: 22px; font-weight: 700; word-break: break-word; }
+    .badge {
+      display: inline-block;
+      border: 1px solid currentColor;
+      padding: 8px 12px;
+      font-size: 24px;
+      font-weight: 700;
+    }
+    .human { color: var(--red); background: rgba(192, 57, 43, 0.08); }
+    .environment { color: var(--blue); background: rgba(3, 105, 161, 0.08); }
+    .background { color: var(--gray); background: rgba(119, 119, 119, 0.08); }
+    .waiting { color: var(--amber); background: rgba(180, 83, 9, 0.08); }
+    .unknown { color: var(--muted); background: rgba(0, 0, 0, 0.04); }
+    .notice {
+      margin-top: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      color: var(--muted);
+      background: #fbfbfa;
+      font-size: 13px;
+    }
+    canvas {
+      width: 100%;
+      height: 320px;
+      border: 1px solid var(--line);
+      background: #fbfbfa;
+      display: block;
+      margin-top: 12px;
+    }
+    audio { width: 100%; margin-top: 12px; }
+    pre {
+      white-space: pre-wrap;
+      background: #fbfbfa;
+      border: 1px solid var(--line);
+      padding: 12px;
+      max-height: 280px;
+      overflow: auto;
+      font-size: 12px;
+    }
+    @media (max-width: 840px) {
+      .grid, .status-row { grid-template-columns: 1fr; }
+      header { align-items: flex-start; flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <div>
+        <h1>Instant Noise Model Test</h1>
+        <div class="sub">Standalone page for Pico W live chunks. Final display uses the deployed 3-class noise model.</div>
+      </div>
+      <button id="refreshButton" type="button">Refresh</button>
+    </header>
+
+    <section class="grid">
+      <div class="panel">
+        <div class="label">Final model result</div>
+        <div id="soundBadge" class="badge waiting">等待音訊</div>
+        <div id="notice" class="notice">Waiting for the first Pico audio chunk.</div>
+        <div class="status-row">
+          <div class="metric">
+            <div class="label">confidence</div>
+            <div id="confidence" class="value">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">fine label</div>
+            <div id="fineLabel" class="value">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">FFT age</div>
+            <div id="fftAge" class="value">-</div>
+          </div>
+        </div>
+        <div class="status-row">
+          <div class="metric">
+            <div class="label">peak Hz</div>
+            <div id="peakHz" class="value">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">deployed acc</div>
+            <div id="accuracy" class="value">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">fresh chunk</div>
+            <div id="fresh" class="value">-</div>
+          </div>
+        </div>
+        <canvas id="chart" width="1000" height="320"></canvas>
+        <audio id="player" controls></audio>
+      </div>
+
+      <aside class="panel">
+        <div class="label">Live dB telemetry</div>
+        <div class="status-row">
+          <div class="metric">
+            <div class="label">dB</div>
+            <div id="db" class="value">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">room</div>
+            <div id="room" class="value">-</div>
+          </div>
+          <div class="metric">
+            <div class="label">updated</div>
+            <div id="updated" class="value">-</div>
+          </div>
+        </div>
+        <pre id="raw">waiting...</pre>
+      </aside>
+    </section>
+  </main>
+
+  <script>
+    const labelMap = {
+      human_created_noise: { text: "\u4eba\u70ba\u566a\u97f3", className: "human" },
+      environment_noise: { text: "\u74b0\u5883\u566a\u97f3", className: "environment" },
+      background: { text: "\u80cc\u666f\u97f3", className: "background" },
+      waiting: { text: "\u7b49\u5f85\u97f3\u8a0a", className: "waiting" },
+    };
+
+    function setText(id, value) {
+      document.getElementById(id).textContent = value == null || value === "" ? "-" : value;
+    }
+
+    function formatConfidence(value) {
+      if (value == null || Number.isNaN(Number(value))) return "-";
+      return `${Math.round(Number(value) * 100)}%`;
+    }
+
+    function setBadge(soundType, stale) {
+      const badge = document.getElementById("soundBadge");
+      const key = stale || !soundType ? "waiting" : soundType;
+      const meta = labelMap[key] || { text: key, className: "unknown" };
+      badge.textContent = meta.text;
+      badge.className = `badge ${meta.className}`;
+    }
+
+    function drawChart(frequencies, magnitudes) {
+      const canvas = document.getElementById("chart");
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = "#fbfbfa";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.strokeStyle = "#dedbd4";
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = 24 + i * ((canvas.height - 48) / 4);
+        ctx.beginPath();
+        ctx.moveTo(42, y);
+        ctx.lineTo(canvas.width - 18, y);
+        ctx.stroke();
+      }
+      if (!frequencies?.length || !magnitudes?.length) return;
+      const maxMag = Math.max(...magnitudes, 1e-12);
+      ctx.strokeStyle = "#111";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      magnitudes.forEach((mag, index) => {
+        const x = 42 + (index / Math.max(magnitudes.length - 1, 1)) * (canvas.width - 60);
+        const y = canvas.height - 24 - (mag / maxMag) * (canvas.height - 54);
+        if (index === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      });
+      ctx.stroke();
+      ctx.fillStyle = "#555";
+      ctx.font = "12px Arial";
+      ctx.fillText("0 Hz", 42, canvas.height - 6);
+      ctx.fillText(`${Math.round(frequencies[frequencies.length - 1])} Hz`, canvas.width - 90, canvas.height - 6);
+    }
+
+    async function refresh() {
+      const response = await fetch("/api/instant/latest", { cache: "no-store" });
+      const payload = await response.json();
+      const data = payload.data || {};
+      const latestNoise = data.noise || {};
+      const latestFft = data.fft || {};
+      const stale = !data.fft_fresh;
+
+      setBadge(data.sound_type, stale);
+      setText("notice", data.message || "-");
+      setText("confidence", stale ? "-" : formatConfidence(data.sound_type_confidence));
+      setText("fineLabel", stale ? "-" : (data.model_sound_type || "-"));
+      setText("fftAge", data.fft_age_seconds == null ? "-" : `${data.fft_age_seconds}s`);
+      setText("peakHz", stale || !data.peak_frequency_hz ? "-" : `${data.peak_frequency_hz}`);
+      setText("accuracy", data.model?.grouped_test_accuracy ? `${Math.round(data.model.grouped_test_accuracy * 100)}%` : "-");
+      setText("fresh", data.fft_fresh ? "yes" : "no");
+      setText("db", latestNoise.estimatedDb ?? latestNoise.decibels ?? "-");
+      setText("room", latestNoise.roomLabel ?? latestNoise.roomIndex ?? "-");
+      setText("updated", new Date().toLocaleTimeString());
+      document.getElementById("raw").textContent = JSON.stringify(data, null, 2);
+
+      drawChart(stale ? [] : latestFft.frequencies_hz, stale ? [] : latestFft.magnitudes);
+      const player = document.getElementById("player");
+      if (!stale && latestFft.wav_filename) {
+        const src = `/mic_test_audio/${encodeURIComponent(latestFft.wav_filename)}`;
+        if (!player.src.endsWith(src)) player.src = src;
+      }
+    }
+
+    document.getElementById("refreshButton").addEventListener("click", refresh);
+    setInterval(refresh, 700);
+    refresh().catch((error) => {
+      document.getElementById("raw").textContent = String(error);
+    });
+  </script>
+</body>
+</html>
