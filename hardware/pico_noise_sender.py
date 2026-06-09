@@ -4,8 +4,8 @@ import ubinascii
 import ujson
 from machine import I2S, Pin
 
-# 傳輸模式：usb = 透過 USB 序列埠輸出給 Mac 橋接腳本
-#            wifi = 透過 WiFi 直接 POST 到 Oracle
+# ????????????????sb = ??? USB ????????????????????? Mac ??????????????
+#            wifi = ??? WiFi ????? POST ??Oracle
 TRANSPORT_MODE = "wifi"
 
 SSID = "YOUR_WIFI_SSID"
@@ -17,6 +17,7 @@ WIFI_CONNECT_TIMEOUT_SECONDS = 35
 
 DEVICE_ID = "pico-w-001"
 CULPRIT_ROOM = "Room A"
+PICO_SCRIPT_VERSION = "i2s-mono-9khz-live-20260609"
 POST_INTERVAL_SECONDS = 0.1
 SENSOR_MODE = "inmp441"  # Use "simulation" when testing without the microphone.
 VIOLATION_DECIBEL_THRESHOLD = 75
@@ -26,22 +27,29 @@ AUDIO_UPLOAD_INTERVAL_SECONDS = 5
 AUDIO_BUFFER_DURATION_MS = 250
 AUDIO_UPLOAD_TEST_MODE = False
 ENABLE_MIC_TEST_UPLOAD = True
-MIC_TEST_START_DECIBEL_THRESHOLD = 40
+MIC_TEST_START_DECIBEL_THRESHOLD = 75
 MIC_TEST_CHUNK_DURATION_MS = 500
-MIC_TEST_WAV_SAMPLE_RATE = 8000
-MIC_TEST_CONTINUE_DECIBEL_THRESHOLD = 37
-MIC_TEST_SILENCE_STOP_SECONDS = 6
+MIC_TEST_WAV_SAMPLE_RATE = 9000
+MIC_TEST_CONTINUE_DECIBEL_THRESHOLD = 70
+MIC_TEST_SILENCE_STOP_SECONDS = 3
+MIC_TEST_FORCE_RECORD_SECONDS = 0
 
 # INMP441 I2S wiring. Change these pins if your Pico W wiring is different.
 INMP441_I2S_ID = 0
 INMP441_SCK_PIN = 10  # INMP441 SCK / BCLK
 INMP441_WS_PIN = 11   # INMP441 WS / LRCL
 INMP441_SD_PIN = 12   # INMP441 SD / DOUT
-INMP441_SAMPLE_RATE = 16000
+INMP441_SD_PIN_CANDIDATES = (12, 13, 9, 8, 6, 7, 16, 17, 18, 19, 20, 21, 22, 2, 3, 4, 5)
+INMP441_SAMPLE_RATE = 9000
 INMP441_BUFFER_SIZE = 1024
-INMP441_SAMPLE_SHIFT = 15   # 提高 1 讓振幅縮小一半
-INMP441_NOISE_FLOOR = 20   # 過濾掉更多環境底噪
-INMP441_LEVEL_SCALE = 400  # 靈敏度係數
+INMP441_SAMPLE_SHIFT = 14
+INMP441_NOISE_FLOOR = 8
+INMP441_LEVEL_SCALE = 450
+INMP441_USE_STEREO_SLOTS = False
+INMP441_ACTIVE_CHANNEL = "auto"  # auto, left, or right. INMP441 L/R->GND normally uses left.
+INMP441_STARTUP_DIAGNOSTIC = False
+INMP441_RAW_DEBUG = False
+INMP441_ZERO_REINIT_SECONDS = 6
 
 
 WIFI_STATUS_MESSAGES = {
@@ -61,6 +69,11 @@ mic_test_session_id = None
 mic_test_chunk_index = 0
 mic_test_last_loud_at = 0
 last_mic_test_idle_log_at = 0
+mic_test_force_recording_until = 0
+mic_test_force_recording_done = False
+last_i2s_zero_log_at = 0
+last_i2s_nonzero_at = 0
+last_i2s_raw_debug_at = 0
 
 
 def read_signed_32_le(buffer, offset):
@@ -68,6 +81,196 @@ def read_signed_32_le(buffer, offset):
     if value & 0x80000000:
         value -= 0x100000000
     return value
+
+
+def create_microphone_i2s(i2s_id=None, use_stereo_slots=None, sck_pin=None, ws_pin=None, sd_pin=None):
+    if i2s_id is None:
+        i2s_id = INMP441_I2S_ID
+    if use_stereo_slots is None:
+        use_stereo_slots = INMP441_USE_STEREO_SLOTS
+    if sck_pin is None:
+        sck_pin = INMP441_SCK_PIN
+    if ws_pin is None:
+        ws_pin = INMP441_WS_PIN
+    if sd_pin is None:
+        sd_pin = INMP441_SD_PIN
+
+    audio_format = I2S.STEREO if use_stereo_slots else I2S.MONO
+    return I2S(
+        i2s_id,
+        sck=Pin(sck_pin),
+        ws=Pin(ws_pin),
+        sd=Pin(sd_pin),
+        mode=I2S.RX,
+        bits=32,
+        format=audio_format,
+        rate=INMP441_SAMPLE_RATE,
+        ibuf=INMP441_BUFFER_SIZE * (2 if use_stereo_slots else 1),
+    )
+
+
+def iter_i2s_mic_samples(sample_bytes, bytes_read):
+    if not INMP441_USE_STEREO_SLOTS:
+        for offset in range(0, bytes_read - 3, 4):
+            yield read_signed_32_le(sample_bytes, offset)
+        return
+
+    left_peak = 0
+    right_peak = 0
+    for offset in range(0, bytes_read - 7, 8):
+        left_sample = read_signed_32_le(sample_bytes, offset)
+        right_sample = read_signed_32_le(sample_bytes, offset + 4)
+        left_abs = abs(left_sample)
+        right_abs = abs(right_sample)
+        if left_abs > left_peak:
+            left_peak = left_abs
+        if right_abs > right_peak:
+            right_peak = right_abs
+
+    if INMP441_ACTIVE_CHANNEL == "left":
+        channel_offset = 0
+    elif INMP441_ACTIVE_CHANNEL == "right":
+        channel_offset = 4
+    else:
+        channel_offset = 0 if left_peak >= right_peak else 4
+
+    for offset in range(channel_offset, bytes_read - 3, 8):
+        yield read_signed_32_le(sample_bytes, offset)
+
+
+def i2s_buffer_stats(sample_bytes, bytes_read, use_stereo_slots):
+    nonzero_bytes = 0
+    for value in sample_bytes[:bytes_read]:
+        if value:
+            nonzero_bytes += 1
+
+    mono_peak = 0
+    left_peak = 0
+    right_peak = 0
+
+    if use_stereo_slots:
+        for offset in range(0, bytes_read - 7, 8):
+            left_abs = abs(read_signed_32_le(sample_bytes, offset))
+            right_abs = abs(read_signed_32_le(sample_bytes, offset + 4))
+            if left_abs > left_peak:
+                left_peak = left_abs
+            if right_abs > right_peak:
+                right_peak = right_abs
+        mono_peak = left_peak if left_peak >= right_peak else right_peak
+    else:
+        for offset in range(0, bytes_read - 3, 4):
+            sample_abs = abs(read_signed_32_le(sample_bytes, offset))
+            if sample_abs > mono_peak:
+                mono_peak = sample_abs
+
+    return mono_peak, left_peak, right_peak, nonzero_bytes
+
+
+def print_i2s_raw_probe():
+    global microphone_i2s
+    global INMP441_I2S_ID
+    global INMP441_SD_PIN
+    global INMP441_USE_STEREO_SLOTS
+    global INMP441_ACTIVE_CHANNEL
+
+    print("I2S diagnostic start")
+    print(
+        "Pins: SCK=GP{}, WS=GP{}, SD=GP{}, sample_rate={}".format(
+            INMP441_SCK_PIN,
+            INMP441_WS_PIN,
+            INMP441_SD_PIN,
+            INMP441_SAMPLE_RATE,
+        )
+    )
+
+    best = None
+    sd_candidates = []
+    for candidate in INMP441_SD_PIN_CANDIDATES:
+        if candidate not in sd_candidates and candidate not in (INMP441_SCK_PIN, INMP441_WS_PIN):
+            sd_candidates.append(candidate)
+
+    for sd_pin in sd_candidates:
+        for i2s_id in (INMP441_I2S_ID, 1 - INMP441_I2S_ID):
+            for use_stereo in (True, False):
+                test_i2s = None
+                try:
+                    test_i2s = create_microphone_i2s(
+                        i2s_id=i2s_id,
+                        use_stereo_slots=use_stereo,
+                        sd_pin=sd_pin,
+                    )
+                    sample_bytes = bytearray(INMP441_BUFFER_SIZE)
+                    time.sleep_ms(100)
+                    bytes_read = 0
+                    for _ in range(4):
+                        bytes_read = test_i2s.readinto(sample_bytes)
+                        time.sleep_ms(20)
+                    peak, left_peak, right_peak, nonzero_bytes = i2s_buffer_stats(
+                        sample_bytes,
+                        bytes_read,
+                        use_stereo,
+                    )
+                    first_bytes = " ".join("{:02x}".format(b) for b in sample_bytes[: min(bytes_read, 16)])
+                    print(
+                        "I2S probe sd=GP{} id={} format={} bytes={} peak={} left={} right={} nonzero_bytes={} first={}".format(
+                            sd_pin,
+                            i2s_id,
+                            "stereo" if use_stereo else "mono",
+                            bytes_read,
+                            peak,
+                            left_peak,
+                            right_peak,
+                            nonzero_bytes,
+                            first_bytes,
+                        )
+                    )
+                    if peak > 0 and (best is None or peak > best["peak"]):
+                        best = {
+                            "i2s_id": i2s_id,
+                            "sd_pin": sd_pin,
+                            "use_stereo": use_stereo,
+                            "peak": peak,
+                            "active_channel": "auto",
+                        }
+                except Exception as exc:
+                    print(
+                        "I2S probe failed sd=GP{} id={} format={}: {}".format(
+                            sd_pin,
+                            i2s_id,
+                            "stereo" if use_stereo else "mono",
+                            exc,
+                        )
+                    )
+                finally:
+                    if test_i2s is not None:
+                        try:
+                            test_i2s.deinit()
+                        except Exception:
+                            pass
+
+    if best:
+        INMP441_I2S_ID = best["i2s_id"]
+        INMP441_SD_PIN = best["sd_pin"]
+        INMP441_USE_STEREO_SLOTS = best["use_stereo"]
+        INMP441_ACTIVE_CHANNEL = best["active_channel"]
+        print(
+            "I2S diagnostic selected sd=GP{} id={} format={} peak={}".format(
+                best["sd_pin"],
+                best["i2s_id"],
+                "stereo" if best["use_stereo"] else "mono",
+                best["peak"],
+            )
+        )
+        microphone_i2s = create_microphone_i2s(
+            i2s_id=best["i2s_id"],
+            use_stereo_slots=best["use_stereo"],
+            sd_pin=best["sd_pin"],
+        )
+    else:
+        print("I2S diagnostic found no non-zero samples on any SD candidate.")
+        print("If SCK is not GP{} or WS is not GP{}, update INMP441_SCK_PIN/INMP441_WS_PIN.".format(INMP441_SCK_PIN, INMP441_WS_PIN))
+        print("Also check VDD=3V3, GND, L/R=GND, and INMP441 DOUT connected to a scanned GP pin.")
+        microphone_i2s = create_microphone_i2s()
 
 
 def connect_wifi():
@@ -179,6 +382,9 @@ def get_inmp441_noise_reading():
     reference sound meter and a calibration offset.
     """
     global microphone_i2s
+    global last_i2s_zero_log_at
+    global last_i2s_nonzero_at
+    global last_i2s_raw_debug_at
 
     if microphone_i2s is None:
         microphone_i2s = I2S(
@@ -196,14 +402,29 @@ def get_inmp441_noise_reading():
     sample_bytes = bytearray(INMP441_BUFFER_SIZE)
     bytes_read = microphone_i2s.readinto(sample_bytes)
 
+    debug_now = time.time()
+    if INMP441_RAW_DEBUG and debug_now - last_i2s_raw_debug_at >= 2:
+        preview = " ".join("{:02x}".format(b) for b in sample_bytes[: min(bytes_read, 16)])
+        print(
+            "I2S raw debug version={} rate={} bytes_read={} first={}".format(
+                PICO_SCRIPT_VERSION,
+                INMP441_SAMPLE_RATE,
+                bytes_read,
+                preview,
+            )
+        )
+        last_i2s_raw_debug_at = debug_now
+
     raw_peak = 0
     shifted_sum = 0
     sample_count = 0
     audio_samples = []
     max_audio_samples = int((INMP441_SAMPLE_RATE * AUDIO_BUFFER_DURATION_MS) / 1000)
 
+    raw_samples = []
     for offset in range(0, bytes_read - 3, 4):
         raw_sample = read_signed_32_le(sample_bytes, offset)
+        raw_samples.append(raw_sample)
         raw_absolute = abs(raw_sample)
         if raw_absolute > raw_peak:
             raw_peak = raw_absolute
@@ -213,6 +434,38 @@ def get_inmp441_noise_reading():
         if len(audio_samples) < max_audio_samples:
             audio_samples.append(max(-32768, min(32767, shifted_sample)))
         sample_count += 1
+
+    now = time.time()
+    if raw_peak > 0:
+        last_i2s_nonzero_at = now
+    elif raw_peak == 0 and now - last_i2s_zero_log_at >= 3:
+        print(
+            "I2S warning: all-zero samples. bytes_read={}, stereo_slots={}, active_channel={}".format(
+                bytes_read,
+                INMP441_USE_STEREO_SLOTS,
+                INMP441_ACTIVE_CHANNEL,
+            )
+        )
+        last_i2s_zero_log_at = now
+
+    if raw_peak == 0 and last_i2s_nonzero_at and now - last_i2s_nonzero_at >= INMP441_ZERO_REINIT_SECONDS:
+        print("I2S warning: reinitializing microphone after continuous zero samples")
+        try:
+            microphone_i2s.deinit()
+        except Exception:
+            pass
+        microphone_i2s = I2S(
+            INMP441_I2S_ID,
+            sck=Pin(INMP441_SCK_PIN),
+            ws=Pin(INMP441_WS_PIN),
+            sd=Pin(INMP441_SD_PIN),
+            mode=I2S.RX,
+            bits=32,
+            format=I2S.MONO,
+            rate=INMP441_SAMPLE_RATE,
+            ibuf=INMP441_BUFFER_SIZE,
+        )
+        last_i2s_nonzero_at = now
 
     if sample_count == 0:
         return {
@@ -230,8 +483,7 @@ def get_inmp441_noise_reading():
     squared_sum = 0
     centered_peak = 0
 
-    for offset in range(0, bytes_read - 3, 4):
-        raw_sample = read_signed_32_le(sample_bytes, offset)
+    for raw_sample in raw_samples:
         shifted_sample = raw_sample >> INMP441_SAMPLE_SHIFT
         centered = shifted_sample - mean
         centered_absolute = abs(centered)
@@ -301,7 +553,8 @@ def sustained_violation_ready(now):
 def build_violation_payload(counter):
     reading = get_noise_reading(counter)
     now = int(time.time())
-    # Pico 只負責串流真實數值，違規判斷交給 Oracle
+    event_type = "monitoring"
+    # Pico ???????????????????????????????????????????Oracle
     audio_samples = reading.get("audio_samples", [])[:128]
 
     telemetry_payload = {
@@ -371,7 +624,7 @@ def should_upload_audio(reading, event_type, now):
 
 
 def send_via_usb(payload):
-    # DATA: 前綴讓 Mac 橋接腳本辨識資料行，與 debug print 區隔
+    # DATA: ??????Mac ????????????????????????????????????debug print ????
     sys.stdout.write("DATA:" + ujson.dumps(payload) + "\n")
 
 
@@ -388,6 +641,8 @@ def send_via_wifi(payload):
 
 
 def post_audio_upload(payload):
+    import urequests
+
     # Raw audio is only for future FFT/AI work. It is sent separately from dB
     # telemetry so the normal monitoring flow remains small and unchanged.
     headers = {"Content-Type": "application/json"}
@@ -517,6 +772,8 @@ def build_mic_test_payload(audio_samples, duration_ms, effective_sample_rate, se
 
 
 def post_mic_test(payload):
+    import urequests
+
     headers = {"Content-Type": "application/json"}
     response = None
     try:
@@ -538,9 +795,23 @@ def main():
     global mic_test_chunk_index
     global mic_test_last_loud_at
     global last_mic_test_idle_log_at
+    global mic_test_force_recording_until
+    global mic_test_force_recording_done
 
     connect_wifi()
     sync_time()
+    print("Pico script version:", PICO_SCRIPT_VERSION)
+    print(
+        "I2S config: id={}, sck=GP{}, ws=GP{}, sd=GP{}, rate={}, bits=32, format=MONO".format(
+            INMP441_I2S_ID,
+            INMP441_SCK_PIN,
+            INMP441_WS_PIN,
+            INMP441_SD_PIN,
+            INMP441_SAMPLE_RATE,
+        )
+    )
+    if SENSOR_MODE == "inmp441" and INMP441_STARTUP_DIAGNOSTIC:
+        print_i2s_raw_probe()
 
     counter = 0
     while True:
@@ -567,8 +838,23 @@ def main():
         if ENABLE_MIC_TEST_UPLOAD:
             starts_recording = reading["estimated_db"] >= MIC_TEST_START_DECIBEL_THRESHOLD
             still_noisy = reading["estimated_db"] >= MIC_TEST_CONTINUE_DECIBEL_THRESHOLD
+            force_recording_active = (
+                MIC_TEST_FORCE_RECORD_SECONDS > 0
+                and not mic_test_force_recording_done
+            )
 
-            if starts_recording:
+            if force_recording_active and not mic_test_recording_active:
+                mic_test_recording_active = True
+                mic_test_session_id = "{}-background-{}".format(DEVICE_ID, now)
+                mic_test_chunk_index = 0
+                mic_test_force_recording_until = now + MIC_TEST_FORCE_RECORD_SECONDS
+                print(
+                    "Background recording mode. Recording {} seconds: {}".format(
+                        MIC_TEST_FORCE_RECORD_SECONDS,
+                        mic_test_session_id,
+                    )
+                )
+            elif starts_recording:
                 mic_test_last_loud_at = now
                 if not mic_test_recording_active:
                     mic_test_recording_active = True
@@ -587,10 +873,13 @@ def main():
                 last_mic_test_idle_log_at = now
 
             if mic_test_recording_active:
-                silence_expired = (
-                    not still_noisy
-                    and now - mic_test_last_loud_at >= MIC_TEST_SILENCE_STOP_SECONDS
-                )
+                if mic_test_force_recording_until > 0:
+                    silence_expired = now >= mic_test_force_recording_until
+                else:
+                    silence_expired = (
+                        not still_noisy
+                        and now - mic_test_last_loud_at >= MIC_TEST_SILENCE_STOP_SECONDS
+                    )
                 try:
                     import gc
                     gc.collect()
@@ -626,6 +915,9 @@ def main():
                         mic_test_recording_active = False
                         mic_test_session_id = None
                         mic_test_chunk_index = 0
+                        if mic_test_force_recording_until > 0:
+                            mic_test_force_recording_until = 0
+                            mic_test_force_recording_done = True
                 except Exception as exc:
                     print("Mic test capture/upload failed:", exc)
 

@@ -1,6 +1,7 @@
 param(
     [string]$Port = "auto",
-    [int]$BackendPort = 8000
+    [int]$BackendPort = 8000,
+    [int]$BackgroundSeconds = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -12,7 +13,8 @@ $PicoScript = Join-Path $ScriptDir "pico_noise_sender.py"
 $BackendOutLog = Join-Path $ScriptDir "web3_oracle.run.out.log"
 $BackendErrLog = Join-Path $ScriptDir "web3_oracle.run.err.log"
 
-$Restored = $false
+$OriginalPicoScriptContent = $null
+$PicoScriptModified = $false
 
 function Stop-Backend {
     Write-Host "`nStopping backend oracle on port $BackendPort..."
@@ -36,12 +38,20 @@ try {
     }
 
     # 1. Temporarily enable mic test upload in pico_noise_sender.py
-    $PicoScriptContent = Get-Content $PicoScript -Raw
-    if ($PicoScriptContent -match "ENABLE_MIC_TEST_UPLOAD = False") {
+    $OriginalPicoScriptContent = Get-Content $PicoScript -Raw
+    $TempContent = $OriginalPicoScriptContent
+    if ($TempContent -match "ENABLE_MIC_TEST_UPLOAD = False") {
         Write-Host "Temporarily enabling ENABLE_MIC_TEST_UPLOAD in pico_noise_sender.py..."
-        $TempContent = $PicoScriptContent -replace "ENABLE_MIC_TEST_UPLOAD = False", "ENABLE_MIC_TEST_UPLOAD = True"
+        $TempContent = $TempContent -replace "ENABLE_MIC_TEST_UPLOAD = False", "ENABLE_MIC_TEST_UPLOAD = True"
+        $PicoScriptModified = $true
+    }
+    if ($BackgroundSeconds -gt 0) {
+        Write-Host "Temporarily enabling background recording for $BackgroundSeconds seconds..."
+        $TempContent = $TempContent -replace "MIC_TEST_FORCE_RECORD_SECONDS = \d+", "MIC_TEST_FORCE_RECORD_SECONDS = $BackgroundSeconds"
+        $PicoScriptModified = $true
+    }
+    if ($PicoScriptModified) {
         [System.IO.File]::WriteAllText($PicoScript, $TempContent, (New-Object System.Text.UTF8Encoding($false)))
-        $Restored = $true
     }
 
     # 2. Clean up old WAV files
@@ -85,9 +95,13 @@ try {
     # 4. Start Pico W MicroPython Script
     Write-Host "Running Pico W script with mpremote..."
     Write-Host "--------------------------------------------------------"
-    Write-Host "Please clap / speak / make noise near the microphone."
-    Write-Host "The Pico W records continuous 500 ms chunks while noise"
-    Write-Host "exceeds the mic-test threshold, then stops after silence."
+    if ($BackgroundSeconds -gt 0) {
+        Write-Host "Background mode: keep the room quiet. The Pico W records for $BackgroundSeconds seconds."
+    } else {
+        Write-Host "Please clap / speak / make noise near the microphone."
+        Write-Host "The Pico W records continuous 500 ms chunks while noise"
+        Write-Host "exceeds the mic-test threshold, then stops after silence."
+    }
     Write-Host "FFT needs 'Sending recording chunk' and 'Mic test POST status: 200'."
     Write-Host "A normal '/noise/ingest' POST is only dB telemetry, not FFT audio."
     Write-Host "Press Ctrl+C to exit."
@@ -104,10 +118,8 @@ try {
     Stop-Backend
     Remove-Item Env:\ORACLE_PORT -ErrorAction SilentlyContinue
 
-    if ($Restored) {
-        Write-Host "Restoring ENABLE_MIC_TEST_UPLOAD to False in pico_noise_sender.py..."
-        $PicoScriptContent = Get-Content $PicoScript -Raw
-        $RestoredContent = $PicoScriptContent -replace "ENABLE_MIC_TEST_UPLOAD = True", "ENABLE_MIC_TEST_UPLOAD = False"
-        [System.IO.File]::WriteAllText($PicoScript, $RestoredContent, (New-Object System.Text.UTF8Encoding($false)))
+    if ($PicoScriptModified -and $OriginalPicoScriptContent) {
+        Write-Host "Restoring pico_noise_sender.py..."
+        [System.IO.File]::WriteAllText($PicoScript, $OriginalPicoScriptContent, (New-Object System.Text.UTF8Encoding($false)))
     }
 }
