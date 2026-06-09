@@ -26,6 +26,25 @@ const TOOLTIP_CONTENT = [
   { label: '背景音',   color: '#888888', desc: '安靜環境中的底層背景音量，通常為環境底噪。' },
 ];
 
+const DISPLAY_SOUND_TYPE_LABELS = {
+  ...SOUND_TYPE_LABELS,
+  human_created_noise: { label: '人為噪音', color: '#c0392b', note: '可能為人聲、音樂或敲擊聲' },
+  human_voice: { label: '人聲', color: '#c0392b', note: '可能違規' },
+  music: { label: '音樂', color: '#b45309', note: '可能違規' },
+  impact_noise: { label: '敲擊聲', color: '#9333ea', note: '可能違規' },
+  environment_noise: { label: '環境噪音', color: '#0369a1', note: '不直接判定違規' },
+  car: { label: '車聲', color: '#0369a1', note: '環境噪音' },
+  rain: { label: '雨聲', color: '#0284c7', note: '環境噪音' },
+  background: { label: '背景音', color: '#888888', note: '' },
+  other_noise: { label: '其他噪音', color: '#64748b', note: '不確定' },
+};
+
+const DISPLAY_TOOLTIP_CONTENT = [
+  { label: '人聲 / 音樂 / 敲擊聲', color: '#c0392b', desc: '可能由住戶或訪客造成，包含說話、播放音樂、敲牆或撞擊聲，可作為違規判斷的輔助依據。' },
+  { label: '雨聲 / 車聲', color: '#0369a1', desc: '非住戶直接產生的環境聲，通常不應直接納入違規。' },
+  { label: '背景音 / 其他噪音', color: '#888888', desc: '一般環境底噪、未知聲音，或模型信心不足的聲音。' },
+];
+
 function SoundTooltip() {
   const [show, setShow] = useState(false);
   return (
@@ -45,7 +64,7 @@ function SoundTooltip() {
           padding: '16px 18px', width: 260,
         }}>
           <div style={{ fontSize: 11, letterSpacing: '0.15em', color: M.muted, textTransform: 'uppercase', marginBottom: 12 }}>聲音分類說明</div>
-          {TOOLTIP_CONTENT.map(item => (
+          {(DISPLAY_TOOLTIP_CONTENT.length ? DISPLAY_TOOLTIP_CONTENT : TOOLTIP_CONTENT).map(item => (
             <div key={item.label} style={{ marginBottom: 10 }}>
               <div style={{ fontSize: 12, fontWeight: 600, color: item.color, marginBottom: 3 }}>{item.label}</div>
               <div style={{ fontSize: 12, color: M.body, lineHeight: 1.6 }}>{item.desc}</div>
@@ -68,13 +87,15 @@ function DbChart({ dbHistory, backendNoise, lastDb }) {
   const pts = dbHistory
     .map((v, i) => `${(i / (dbHistory.length - 1)) * SVG_W},${SVG_H - ((Math.min(Math.max(v, DB_MIN), DB_MAX) - DB_MIN) / (DB_MAX - DB_MIN)) * SVG_H}`)
     .join(' ');
-  const threshold70y = SVG_H - ((70 - DB_MIN) / (DB_MAX - DB_MIN)) * SVG_H;
+  const threshold75y = SVG_H - ((75 - DB_MIN) / (DB_MAX - DB_MIN)) * SVG_H;
   const db = Number.isFinite(lastDb) ? lastDb : 0;
   const isAlert = db > 70;
 
   const soundType = backendNoise?.soundType;
   const confidence = backendNoise?.soundTypeConfidence;
-  const soundMeta = soundType ? (SOUND_TYPE_LABELS[soundType] ?? { label: soundType, color: M.muted, note: '' }) : null;
+  const soundMeta = soundType ? (DISPLAY_SOUND_TYPE_LABELS[soundType] ?? { label: soundType, color: M.muted, note: '' }) : null;
+  const modelSoundType = backendNoise?.modelSoundType;
+  const fftFresh = backendNoise?.fftFresh;
 
   return (
     <div style={{ border: `1px solid ${M.border}`, background: M.surface, padding: '22px 24px', marginBottom: 20 }}>
@@ -96,6 +117,8 @@ function DbChart({ dbHistory, backendNoise, lastDb }) {
               </span>
               {confidence != null && <span style={{ fontSize: 12, color: M.muted }}>{(confidence * 100).toFixed(0)}%</span>}
               {soundMeta.note && <span style={{ fontSize: 11, color: soundMeta.color, opacity: 0.7 }}>{soundMeta.note}</span>}
+              {modelSoundType && <span style={{ fontSize: 11, color: M.muted }}>fine: {modelSoundType}</span>}
+              {fftFresh && <span style={{ fontSize: 11, color: '#15803d' }}>live</span>}
             </div>
           ) : (
             <div style={{ fontSize: 12, color: M.muted }}>聲音類型：待分析</div>
@@ -116,11 +139,11 @@ function DbChart({ dbHistory, backendNoise, lastDb }) {
         </div>
       </div>
       <svg viewBox={`0 0 ${SVG_W} ${SVG_H}`} style={{ width: '100%', height: SVG_H, display: 'block' }}>
-        <line x1="0" y1={threshold70y} x2={SVG_W} y2={threshold70y} stroke="#c0392b" strokeWidth="1" strokeDasharray="4,6" opacity="0.35" />
+        <line x1="0" y1={threshold75y} x2={SVG_W} y2={threshold75y} stroke="#c0392b" strokeWidth="1" strokeDasharray="4,6" opacity="0.35" />
         <polyline fill="none" stroke={isAlert ? '#c0392b' : '#bbbbbb'} strokeWidth="1.5" strokeLinejoin="round" points={pts} />
       </svg>
       <div style={{ marginTop: 8, display: 'flex', justifyContent: 'space-between', fontSize: 12, color: M.muted }}>
-        <span><span style={{ color: '#c0392b' }}>—</span> 門檻 70 dB</span>
+        <span><span style={{ color: '#c0392b' }}>—</span> 門檻 75 dB</span>
         {backendNoise && <span style={{ color: backendNoise.reportAllowed ? '#c0392b' : M.muted }}>{backendNoise.roomLabel} · {backendNoise.source}</span>}
       </div>
     </div>

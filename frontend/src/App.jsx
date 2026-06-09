@@ -42,6 +42,33 @@ function sensorDb(data) {
   return Number(data.estimatedDb ?? data.estimated_db ?? data.decibels);
 }
 
+function mergeInstantNoise(noiseData, instantData) {
+  if (!instantData) return noiseData;
+  const base = noiseData || instantData.noise || null;
+  if (!base) return null;
+  if (!instantData.fft_fresh || !instantData.sound_type) {
+    return {
+      ...base,
+      soundType: "background",
+      soundTypeConfidence: null,
+      modelSoundType: null,
+      fftFresh: false,
+      fftAgeSeconds: instantData.fft_age_seconds,
+      peakFrequencyHz: null,
+    };
+  }
+
+  return {
+    ...base,
+    soundType: instantData.sound_type,
+    soundTypeConfidence: instantData.sound_type_confidence,
+    modelSoundType: instantData.model_sound_type,
+    fftFresh: instantData.fft_fresh,
+    fftAgeSeconds: instantData.fft_age_seconds,
+    peakFrequencyHz: instantData.peak_frequency_hz,
+  };
+}
+
 export default function App() {
   // ── Wallet & identity ─────────────────────────────────────────────────────
   const [provider,      setProvider]      = useState(null);
@@ -124,10 +151,14 @@ export default function App() {
     let cancelled = false;
     async function poll() {
       try {
-        const res  = await fetch(`${SENSOR_API_URL}/noise/latest`);
-        if (!res.ok) return;
-        const json = await res.json();
-        const data = json.data;
+        const [noiseRes, instantRes] = await Promise.all([
+          fetch(`${SENSOR_API_URL}/noise/latest`, { cache: "no-store" }),
+          fetch(`${SENSOR_API_URL}/api/instant/latest`, { cache: "no-store" }),
+        ]);
+        if (!noiseRes.ok) return;
+        const noiseJson = await noiseRes.json();
+        const instantJson = instantRes.ok ? await instantRes.json() : null;
+        const data = mergeInstantNoise(noiseJson.data, instantJson?.data);
         if (cancelled || !data) return;
         setBackendNoise(data);
         const currentDb = sensorDb(data);
@@ -245,7 +276,7 @@ export default function App() {
           const data = JSON.parse(stored);
           setLandlordName(data.name);
           setNeedsNameSetup(false);
-          if (shouldNavigate) setTab("overview");
+          if (shouldNavigate) setTab("admin");
         } catch {
           localStorage.removeItem(landlordKey(addr));
           setNeedsNameSetup(true);
@@ -316,7 +347,7 @@ export default function App() {
     localStorage.setItem(landlordKey(account), JSON.stringify(data));
     setLandlordName(name);
     setNeedsNameSetup(false);
-    setTab("overview");
+    setTab("admin");
   }
 
   // ── Logout ────────────────────────────────────────────────────────────────
