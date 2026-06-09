@@ -84,6 +84,7 @@ export default function App() {
   const [violations, setViolations] = useState([]);
   const [proposals,  setProposals]  = useState([]);
   const [logs,       setLogs]       = useState([]);
+  const [landlordRewardState, setLandlordRewardState] = useState({ available: 0n, locked: 0n });
 
   // ── MockControl state ─────────────────────────────────────────────────────
   const [mockRoom,     setMockRoom]     = useState(2);
@@ -332,6 +333,7 @@ export default function App() {
     setIsLandlord(false); setMyRoom(null);
     setLandlordName(null); setNeedsNameSetup(false); setNeedsDeploy(false);
     setRooms([]); setViolations([]); setProposals([]); setLogs([]);
+    setLandlordRewardState({ available: 0n, locked: 0n });
     setTab("myroom");
     clearMsg();
   }
@@ -363,7 +365,7 @@ export default function App() {
   async function loadAll(c, p, address) {
     const ct = c || contract; const pv = p || provider;
     if (!ct) return;
-    await Promise.all([loadRooms(ct), loadViolations(ct), loadProposals(ct, address), loadLogs(ct, pv)]);
+    await Promise.all([loadRooms(ct), loadViolations(ct), loadProposals(ct, address), loadLogs(ct, pv), loadLandlordRewards(ct)]);
   }
 
   async function loadRooms(ct) {
@@ -400,6 +402,15 @@ export default function App() {
       list.push({ id: i, violationId: Number(p.violationId), appellant: p.appellant, yesVotes: Number(yes), noVotes: Number(no), voterCount: Number(p.voterCount), executed: p.executed, passed: p.passed, hasVoted: voted, usedCredits, createdAt: Number(p.createdAt), totalEligibleVoters });
     }
     setProposals(list);
+  }
+
+  async function loadLandlordRewards(ct) {
+    if (!ct?.landlordRewards || !ct?.landlordLockedRewards) return;
+    const [available, locked] = await Promise.all([
+      ct.landlordRewards(),
+      ct.landlordLockedRewards(),
+    ]);
+    setLandlordRewardState({ available, locked });
   }
 
   async function loadLogs(ct, pv) {
@@ -481,6 +492,19 @@ export default function App() {
     setLoading(true);
     try { const tx = await contract.executeProposal(BigInt(pid)); await tx.wait(); flash("success", "結案完成"); await loadAll(); }
     catch { flash("warning", "結案失敗，請確認提案狀態是否正確"); }
+    setLoading(false);
+  }
+
+  async function handleWithdrawLandlordRewards() {
+    setLoading(true);
+    try {
+      const tx = await contract.withdrawLandlordRewards();
+      await tx.wait();
+      flash("success", "房東獎勵已提領");
+      await loadAll();
+    } catch {
+      flash("warning", "提領失敗，請確認是否有可提領獎勵");
+    }
     setLoading(false);
   }
 
@@ -602,7 +626,7 @@ export default function App() {
         {tab === "myroom"   && <MyRoom account={account} myRoom={myRoom} rooms={rooms} violations={violations} proposals={proposals} loading={loading} handleAppeal={handleAppeal} depAmt={depAmt} setDepAmt={setDepAmt} handleDeposit={handleDeposit} dbHistory={dbHistory} backendNoise={backendNoise} lastDb={lastDb} onRefresh={() => loadAll()} />}
         {tab === "dao"      && <DAOPanel account={account} loading={loading} proposals={proposals} handleVote={handleVote} handleExecute={handleExecute} qvCounts={qvCounts} setQvCounts={setQvCounts} />}
         {tab === "overview" && <Dashboard account={account} isLandlord={isLandlord} isUnknown={isUnknown} rooms={rooms} violations={violations} logs={logs} flashRoom={flashRoom} loadAll={() => loadAll()} />}
-        {tab === "admin"    && <AdminPanel account={account} isLandlord={isLandlord} contract={contract} loading={loading} rooms={rooms} regRoom={regRoom} setRegRoom={setRegRoom} regAddr={regAddr} setRegAddr={setRegAddr} depAmt={depAmt} setDepAmt={setDepAmt} handleRegister={handleRegister} handleDeposit={handleDeposit} mockControlProps={mockControlProps} />}
+        {tab === "admin"    && <AdminPanel account={account} isLandlord={isLandlord} contract={contract} loading={loading} rooms={rooms} landlordRewardState={landlordRewardState} regRoom={regRoom} setRegRoom={setRegRoom} regAddr={regAddr} setRegAddr={setRegAddr} depAmt={depAmt} setDepAmt={setDepAmt} handleRegister={handleRegister} handleDeposit={handleDeposit} handleWithdrawLandlordRewards={handleWithdrawLandlordRewards} mockControlProps={mockControlProps} />}
       </div>
 
       <footer style={{ marginTop: 80, borderTop: `1px solid ${S.border}`, textAlign: "center", padding: "28px 48px", fontSize: 11, color: S.muted, letterSpacing: "0.18em", textTransform: "uppercase" }}>

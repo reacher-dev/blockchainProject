@@ -324,12 +324,14 @@ contract RentEscrowTest is Test {
         _depositAll(2 ether);
         _reportNoise(0, 80); // PENALTY_TIER1 distributed
 
-        uint256 rewardEach = escrow.PENALTY_TIER1() / 4;
+        uint256 rewardEach = escrow.PENALTY_TIER1() / 5;
         for (uint8 i = 1; i < 5; i++) {
             (uint256 free, uint256 locked) = escrow.getDeposit(i);
             assertEq(free,   2 ether);     // free balance unchanged
             assertEq(locked, rewardEach);  // reward is locked
         }
+        assertEq(escrow.landlordLockedRewards(), rewardEach);
+        assertEq(escrow.landlordRewards(), 0);
     }
 
     function test_WithdrawCannotTouchLockedBalance() public {
@@ -351,7 +353,7 @@ contract RentEscrowTest is Test {
     function test_ReleaseRewards_MovesLockedToFree() public {
         _depositAll(2 ether);
         uint256 vid = _reportNoise(0, 80);
-        uint256 rewardEach = escrow.PENALTY_TIER1() / 4;
+        uint256 rewardEach = escrow.PENALTY_TIER1() / 5;
 
         vm.warp(block.timestamp + 25 hours);
         escrow.releaseRewards(vid);
@@ -361,6 +363,24 @@ contract RentEscrowTest is Test {
             assertEq(free,   2 ether + rewardEach); // now in free
             assertEq(locked, 0);
         }
+        assertEq(escrow.landlordLockedRewards(), 0);
+        assertEq(escrow.landlordRewards(), rewardEach);
+    }
+
+    function test_LandlordCanWithdrawReleasedRewards() public {
+        _depositAll(2 ether);
+        uint256 vid = _reportNoise(0, 80);
+        uint256 rewardEach = escrow.PENALTY_TIER1() / 5;
+
+        vm.warp(block.timestamp + 25 hours);
+        escrow.releaseRewards(vid);
+
+        uint256 before = landlord.balance;
+        vm.prank(landlord);
+        escrow.withdrawLandlordRewards();
+
+        assertEq(escrow.landlordRewards(), 0);
+        assertEq(landlord.balance, before + rewardEach);
     }
 
     function test_RevertWhen_ReleaseRewards_WindowStillOpen() public {
@@ -417,6 +437,8 @@ contract RentEscrowTest is Test {
             (, uint256 locked) = escrow.getDeposit(i);
             assertEq(locked, 0);
         }
+        assertEq(escrow.landlordLockedRewards(), 0);
+        assertEq(escrow.landlordRewards(), 0);
 
         // Alice's penalty is refunded (minus appeal fee)
         (uint256 aliceFree,) = escrow.getDeposit(0);
@@ -522,7 +544,7 @@ contract RentEscrowTest is Test {
 
     function test_AppealFailed_LockedRewardsReleasedToRecipients() public {
         (, uint256 pid) = _setupAppeal(0, 80);
-        uint256 rewardEach = escrow.PENALTY_TIER1() / 4;
+        uint256 rewardEach = escrow.PENALTY_TIER1() / 5;
 
         // 3 no votes — quorum met, appeal fails
         vm.prank(tenantAddrs[1]); escrow.vote(pid, false, 1);
@@ -538,6 +560,8 @@ contract RentEscrowTest is Test {
             assertEq(free,   2 ether + rewardEach);
             assertEq(locked, 0);
         }
+        assertEq(escrow.landlordLockedRewards(), 0);
+        assertEq(escrow.landlordRewards(), rewardEach);
     }
 
     function test_RevertWhen_DoubleVote() public {

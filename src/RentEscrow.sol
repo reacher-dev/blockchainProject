@@ -83,6 +83,8 @@ contract RentEscrow is ReentrancyGuard {
     // ─── Roles ───────────────────────────────────────────────────────────────────
 
     address public immutable landlord;
+    uint256 public landlordRewards;
+    uint256 public landlordLockedRewards;
 
     // Fix 7 — oracle pool instead of single address
     mapping(address => bool) public isOracle;
@@ -161,8 +163,9 @@ contract RentEscrow is ReentrancyGuard {
     event Deposited(uint8 indexed roomIndex, address tenant, uint256 amount);
     event Withdrawn(uint8 indexed roomIndex, address tenant, uint256 amount);
     event NoiseReported(uint256 indexed violationId, uint8 roomIndex, uint256 decibels, uint256 penalty);
-    event PenaltyApplied(uint256 indexed violationId, uint8 offenderRoom, uint256 penaltyAmount, uint256 rewardPerTenant);
+    event PenaltyApplied(uint256 indexed violationId, uint8 offenderRoom, uint256 penaltyAmount, uint256 rewardPerRecipient);
     event RewardsReleased(uint256 indexed violationId);
+    event LandlordRewardsWithdrawn(address indexed landlord, uint256 amount);
     event AppealCreated(uint256 indexed proposalId, uint256 violationId, address appellant, string reason);
     event VoteCast(uint256 indexed proposalId, address voter, bool approve, uint256 voteCount);
     event ProposalExecuted(uint256 indexed proposalId, bool passed);
@@ -269,6 +272,18 @@ contract RentEscrow is ReentrancyGuard {
         if (!ok) revert TransferFailed();
     }
 
+    /// @notice Landlord withdraws released penalty rewards.
+    function withdrawLandlordRewards() external onlyLandlord nonReentrant {
+        uint256 amount = landlordRewards;
+        if (amount == 0) revert NothingToWithdraw();
+
+        landlordRewards = 0;
+        emit LandlordRewardsWithdrawn(msg.sender, amount);
+
+        (bool ok,) = msg.sender.call{value: amount}("");
+        if (!ok) revert TransferFailed();
+    }
+
     // ─── Oracle / Noise Reporting ─────────────────────────────────────────────────
 
     /**
@@ -353,21 +368,21 @@ contract RentEscrow is ReentrancyGuard {
         // Deduct from offender's free balance
         tenants[offender].deposit -= v.penaltyPaid;
 
-        // Distribute penalty to other tenants' LOCKED balance.
-        // If offender is the only tenant, skip distribution (no recipients).
+        // Distribute penalty to other tenants and landlord's LOCKED balance.
         uint256 rewardEach = 0;
-        if (tenantCount > 1) {
-            rewardEach = v.penaltyPaid / (tenantCount - 1);
+        if (tenantCount > 0) {
+            rewardEach = v.penaltyPaid / tenantCount;
             for (uint8 i = 0; i < MAX_ROOMS; i++) {
                 if (i != offender && tenants[i].registered) {
                     tenants[i].lockedDeposit += rewardEach;
                 }
             }
+            landlordLockedRewards += rewardEach;
         }
 
         violationLocks[vid] = ViolationLock({
             rewardPerRecipient: rewardEach,
-            released:           tenantCount <= 1  // nothing to release when no recipients
+            released:           tenantCount == 0
         });
 
         emit PenaltyApplied(vid, offender, v.penaltyPaid, rewardEach);
@@ -404,6 +419,8 @@ contract RentEscrow is ReentrancyGuard {
                 tenants[i].deposit       += rewardPerRecipient;
             }
         }
+        landlordLockedRewards -= rewardPerRecipient;
+        landlordRewards       += rewardPerRecipient;
     }
 
     // ─── DAO Governance ──────────────────────────────────────────────────────────
@@ -561,6 +578,7 @@ contract RentEscrow is ReentrancyGuard {
                 tenants[i].lockedDeposit -= lk.rewardPerRecipient;
             }
         }
+        landlordLockedRewards -= lk.rewardPerRecipient;
         lk.released = true;
 
         // Return the full penalty to the offender's free balance

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ROOM_NAMES } from '../Web3.js';
+import { ROOM_NAMES, fmt } from '../Web3.js';
 import MockControl from './MockControl.jsx';
 
 const ROOM_LABELS = ['A', 'B', 'C', 'D', 'E'];
@@ -39,7 +39,7 @@ const fieldStyle = {
   fontFamily: 'inherit',
 };
 
-export default function AdminPanel({ account, isLandlord, contract, loading, rooms, regRoom, setRegRoom, regAddr, setRegAddr, handleRegister, mockControlProps }) {
+export default function AdminPanel({ account, isLandlord, contract, loading, rooms, landlordRewardState, regRoom, setRegRoom, regAddr, setRegAddr, handleRegister, handleWithdrawLandlordRewards, mockControlProps }) {
   if (!account) return <div style={{ background: M.surface, border: `1px solid ${M.border}`, boxShadow: CARD_SHADOW, padding: 52, textAlign: 'center', color: M.muted, fontSize: 15 }}>請先連接 MetaMask</div>;
   if (!isLandlord) return (
     <div style={{ background: M.surface, border: `1px solid ${M.border}`, boxShadow: CARD_SHADOW, padding: 52, textAlign: 'center' }}>
@@ -50,9 +50,42 @@ export default function AdminPanel({ account, isLandlord, contract, loading, roo
 
   const displayRooms = rooms?.length ? rooms : ROOM_NAMES.map((name, i) => ({ i, name, tenant: null, registered: false }));
   const btnDisabled = loading || !contract || !regAddr.trim();
+  const rewardAvailable = landlordRewardState?.available ?? 0n;
+  const rewardLocked = landlordRewardState?.locked ?? 0n;
+  const withdrawDisabled = loading || !contract || rewardAvailable === 0n;
 
   return (
     <>
+      {/* Landlord rewards */}
+      <div style={{ border: `1px solid ${M.border}`, background: M.surface, boxShadow: CARD_SHADOW, marginBottom: 24 }}>
+        <div style={{ padding: '16px 24px', borderBottom: `1px solid ${M.border}`, background: M.surface2, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
+          <div>
+            <div style={{ fontSize: 11, letterSpacing: '0.2em', color: M.muted, textTransform: 'uppercase' }}>房東罰款分潤</div>
+          </div>
+          <button onClick={handleWithdrawLandlordRewards} disabled={withdrawDisabled}
+            style={{
+              height: 36, padding: '0 18px',
+              background: withdrawDisabled ? '#d0d0d0' : '#0a0a0a',
+              color: '#ffffff', border: 'none',
+              fontSize: 11, letterSpacing: '0.15em', textTransform: 'uppercase',
+              cursor: withdrawDisabled ? 'default' : 'pointer',
+              whiteSpace: 'nowrap', fontFamily: 'inherit',
+            }}>
+            提領
+          </button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', background: '#ffffff' }}>
+          <div style={{ padding: '20px 24px', borderRight: `1px solid ${M.border}` }}>
+            <div style={{ fontSize: 11, letterSpacing: '0.15em', color: '#667085', fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>可提領</div>
+            <div style={{ fontSize: 24, fontWeight: 300, color: M.heading }}>{fmt(rewardAvailable)} <span style={{ fontSize: 12, color: M.muted }}>ETH</span></div>
+          </div>
+          <div style={{ padding: '20px 24px' }}>
+            <div style={{ fontSize: 11, letterSpacing: '0.15em', color: '#667085', fontWeight: 600, marginBottom: 8, textTransform: 'uppercase' }}>申訴期鎖定</div>
+            <div style={{ fontSize: 24, fontWeight: 300, color: rewardLocked > 0n ? '#b45309' : M.heading }}>{fmt(rewardLocked)} <span style={{ fontSize: 12, color: M.muted }}>ETH</span></div>
+          </div>
+        </div>
+      </div>
+
       {/* Register */}
       <div style={{ border: `1px solid ${M.border}`, background: M.surface, boxShadow: CARD_SHADOW, marginBottom: 24 }}>
         <div style={{ padding: '16px 24px', borderBottom: `1px solid ${M.border}`, background: M.surface2 }}>
