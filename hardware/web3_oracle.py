@@ -98,9 +98,12 @@ DEPLOYED_NOISE_GROUPS = {
 # 每個裝置的滑動視窗（用於 Oracle 端違規判斷）
 DEVICE_WINDOWS = {}    # device_id -> [{"timestamp": t, "db": db}, ...]
 DEVICE_COOLDOWN = {}   # device_id -> last_violation_timestamp
+DEVICE_SOUND_HISTORY = {}  # device_id -> [{"timestamp": t, "sound_type": label}, ...]
 
 VIOLATION_WINDOW_SECONDS = int(os.getenv("ORACLE_VIOLATION_WINDOW", "10"))
 VIOLATION_COOLDOWN_SECONDS = int(os.getenv("ORACLE_VIOLATION_COOLDOWN", "30"))
+SOUND_HISTORY_WINDOW_SECONDS = int(os.getenv("ORACLE_SOUND_HISTORY_WINDOW_SECONDS", "20"))
+SOUND_HISTORY_DOMINANCE_RATIO = float(os.getenv("ORACLE_SOUND_HISTORY_DOMINANCE_RATIO", "0.55"))
 
 # Runtime contract address — overrides the value in contract.json.
 # Set via POST /contract/address after frontend deploys the contract.
@@ -258,9 +261,11 @@ def calculate_fft_demo(sample_values, sample_rate, wav_filename=None):
         "tonal_peak_ratio": tonal_peak_ratio,
         "zero_crossing_rate": zero_crossing_rate,
     }
-    model_prediction = predict_noise_model(feature_values)
-    if model_prediction:
-        sound_type = model_prediction["noise_group"]
+    model_prediction = None
+    if len(sample_values) >= sample_rate * 0.25:
+        model_prediction = predict_noise_model(feature_values)
+        if model_prediction:
+            sound_type = model_prediction["noise_group"]
 
     chart_indices = np.arange(len(frequencies))
     if len(chart_indices) > FFT_CHART_POINT_LIMIT:
@@ -405,6 +410,7 @@ def load_noise_model():
         print(f"Could not load noise model {NOISE_MODEL_PATH}: {exc}")
         return None
 
+GLOBAL_CONFIDENCE_HISTORY = []
 
 def predict_noise_model(feature_values):
     payload = load_noise_model()
@@ -418,13 +424,62 @@ def predict_noise_model(feature_values):
         model = payload["model"]
         vector = np.asarray([[float(feature_values[column]) for column in feature_columns]], dtype=np.float64)
         predicted = str(model.predict(vector)[0])
+        noise_group = NOISE_GROUP_BY_LABEL.get(predicted, predicted)
+        
         confidence = None
+        human_conf_current = 0.0
         if hasattr(model, "predict_proba"):
             probabilities = model.predict_proba(vector)[0]
             confidence = float(max(probabilities))
+            if hasattr(model, "classes_"):
+                human_prob_sum = 0.0
+                for i, class_label in enumerate(model.classes_):
+                    group = NOISE_GROUP_BY_LABEL.get(class_label, class_label)
+                    if group == "human_created_noise":
+                        human_prob_sum += probabilities[i]
+                human_conf_current = float(human_prob_sum)
+                print(f"[DEBUG] Model classes: {model.classes_}, probabilities: {probabilities}")
+            else:
+                human_conf_current = confidence if noise_group == "human_created_noise" else 0.0
+                print("[DEBUG] No model.classes_ found, using fallback")
+        else:
+            human_conf_current = 1.0 if noise_group == "human_created_noise" else 0.0
+            print("[DEBUG] No predict_proba found, using fallback")
+            
+        print(f"[DEBUG] predicted: {predicted}, noise_group: {noise_group}, confidence: {confidence}, human_conf_current: {human_conf_current}")
+
+        global GLOBAL_CONFIDENCE_HISTORY
+        now = time.time()
+        if confidence is not None:
+            GLOBAL_CONFIDENCE_HISTORY.append({"time": now, "human_conf": human_conf_current, "orig_conf": confidence})
+        
+        # Keep only the last 5 seconds
+        GLOBAL_CONFIDENCE_HISTORY = [e for e in GLOBAL_CONFIDENCE_HISTORY if now - e["time"] <= 5]
+        
+        if GLOBAL_CONFIDENCE_HISTORY:
+            weighted_sum = 0.0
+            total_weight = 0.0
+            for e in GLOBAL_CONFIDENCE_HISTORY:
+                age = now - e["time"]
+                weight = max(0.1, 5.0 - age)  # 越舊的權重越低
+                weighted_sum += e["human_conf"] * weight
+                total_weight += weight
+            avg_human_conf = weighted_sum / total_weight if total_weight > 0 else 0
+            
+            if avg_human_conf >= 0.7:
+                noise_group = "human_created_noise"
+            else:
+                noise_group = "environment_noise"
+                
+            print(f"[DEBUG] avg_human_conf: {avg_human_conf:.4f} => Final group: {noise_group}")
+            
+            # 覆寫回傳值，讓前端的「即時顯示」也跟著平滑化
+            predicted = noise_group
+            confidence = avg_human_conf if noise_group == "human_created_noise" else (1.0 - avg_human_conf)
+
         return {
             "sound_type": predicted,
-            "noise_group": NOISE_GROUP_BY_LABEL.get(predicted, predicted),
+            "noise_group": noise_group,
             "confidence": round(confidence, 4) if confidence is not None else None,
             "model_path": str(NOISE_MODEL_PATH),
         }
@@ -470,6 +525,11 @@ def predict_noise_type(audio_samples, sample_rate):
     3-group label because human_voice/music/impact_noise are intentionally
     treated as the same final category for this project.
     """
+    if len(audio_samples) < sample_rate * 0.25:
+        # Ignore chunks smaller than 0.25s as they produce garbage features
+        # and poison the GLOBAL_CONFIDENCE_HISTORY.
+        return None
+
     fft_result = calculate_fft_demo(audio_samples, sample_rate)
     if not fft_result.get("available"):
         return None
@@ -480,6 +540,67 @@ def predict_noise_type(audio_samples, sample_rate):
         "soundTypeConfidence": confidence,
         "modelSoundType": fft_result.get("model_sound_type"),
     }
+
+
+def update_sound_history(device_id, sound_type, timestamp):
+    if not isinstance(device_id, str) or not device_id or not sound_type:
+        return []
+
+    history = DEVICE_SOUND_HISTORY.setdefault(device_id, [])
+    history.append({"timestamp": int(timestamp), "sound_type": sound_type})
+
+    cutoff = int(timestamp) - SOUND_HISTORY_WINDOW_SECONDS
+    history = [entry for entry in history if entry["timestamp"] >= cutoff]
+    DEVICE_SOUND_HISTORY[device_id] = history[-60:]
+    return DEVICE_SOUND_HISTORY[device_id]
+
+
+def choose_sound_type_for_period(device_id, sound_type, timestamp, confidence=None):
+    if not isinstance(device_id, str) or not device_id or not sound_type:
+        return (sound_type, confidence) if confidence is not None else sound_type
+
+    history = DEVICE_SOUND_HISTORY.get(device_id, [])
+    if timestamp is not None:
+        cutoff = int(timestamp) - SOUND_HISTORY_WINDOW_SECONDS
+        history = [entry for entry in history if entry["timestamp"] >= cutoff]
+
+    if not history:
+        return (sound_type, confidence) if confidence is not None else sound_type
+
+    environment_like = {"environment_noise", "background"}
+    human_like = {"human_created_noise"}
+
+    total = len(history)
+    environment_count = sum(1 for item in history if item["sound_type"] in environment_like)
+    human_count = sum(1 for item in history if item["sound_type"] in human_like)
+
+    if total < 3:
+        return (sound_type, confidence) if confidence is not None else sound_type
+
+    env_ratio = environment_count / total
+    human_ratio = human_count / total
+
+    final_sound_type = sound_type
+    effective_confidence = confidence
+
+    if final_sound_type == "human_created_noise" and effective_confidence is not None and float(effective_confidence) < 0.5:
+        final_sound_type = "environment_noise"
+
+    # If environment noise has dominated most of the recent period, prefer it
+    # over short human-created spikes and give it a stronger confidence value.
+    if env_ratio >= SOUND_HISTORY_DOMINANCE_RATIO and environment_count > human_count:
+        final_sound_type = "environment_noise"
+        if confidence is not None:
+            confidence_value = float(confidence)
+            effective_confidence = max(confidence_value, 0.55 + min(0.25, env_ratio * 0.25))
+
+    if final_sound_type in environment_like and human_ratio > 0.5:
+        final_sound_type = "human_created_noise"
+
+    if confidence is None:
+        return final_sound_type
+
+    return final_sound_type, round(float(effective_confidence), 4) if effective_confidence is not None else confidence
 
 
 def get_noise_model_status():
@@ -1950,9 +2071,23 @@ setInterval(() => loadFFT(false), 1000);
             if audio_samples:
                 ml_result = predict_noise_type(audio_samples, audio_sample_rate)
                 if ml_result:
-                    noise_event["soundType"] = ml_result["soundType"]
-                    noise_event["soundTypeConfidence"] = ml_result["soundTypeConfidence"]
-                    print(f"  sound_type: {ml_result['soundType']} (confidence={ml_result['soundTypeConfidence']})")
+                    raw_sound_type = ml_result["soundType"]
+                    update_sound_history(noise_event["deviceId"], raw_sound_type, noise_event["receivedAt"])
+                    classification = choose_sound_type_for_period(
+                        noise_event["deviceId"],
+                        raw_sound_type,
+                        noise_event["receivedAt"],
+                        confidence=ml_result["soundTypeConfidence"],
+                    )
+                    if isinstance(classification, tuple):
+                        stable_sound_type, effective_confidence = classification
+                    else:
+                        stable_sound_type, effective_confidence = classification, ml_result["soundTypeConfidence"]
+                    noise_event["soundType"] = stable_sound_type
+                    noise_event["soundTypeConfidence"] = effective_confidence
+                    if stable_sound_type != raw_sound_type:
+                        noise_event["soundTypeReason"] = "environment_noise dominated recent period"
+                    print(f"  sound_type: {stable_sound_type} (confidence={effective_confidence})")
                 else:
                     noise_event["soundType"] = None
                     noise_event["soundTypeConfidence"] = None
