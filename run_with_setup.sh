@@ -10,23 +10,17 @@ BACKEND_PORT=8000
 FRONTEND_PORT=5173
 NO_OPEN=0
 PRIVATE_KEY="0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80"
+TENANT_PK="0x5de4111afa1a4b94908f83103eb1f1706367c2e68ca870fc3fb9a804cdab365a"
+TENANT_ADDRESS="0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"
+
 PIDS=()
 PICO_RUNTIME="$(mktemp "${TMPDIR:-/tmp}/pico_noise_sender.XXXXXX")"
 
 usage() {
-  cat <<'EOF'
+  cat <<'INNEREOF'
 Usage:
-  ./run_all.sh --port /dev/cu.usbmodemXXXX --wifi-ssid "SSID" --wifi-password "PASSWORD"
-
-Options:
-  --port PORT              Pico serial port; defaults to PICO_PORT or auto
-  --wifi-ssid SSID         Wi-Fi SSID; defaults to PICO_WIFI_SSID
-  --wifi-password PASSWORD Wi-Fi password; defaults to PICO_WIFI_PASSWORD
-  --host-ip IP             Computer LAN IP visible to Pico W
-  --backend-port PORT      Backend port, default 8000
-  --frontend-port PORT     Frontend port, default 5173
-  --no-open                Do not open browser pages
-EOF
+  ./run_with_setup.sh --port /dev/cu.usbmodemXXXX --wifi-ssid "SSID" --wifi-password "PASSWORD"
+INNEREOF
 }
 
 while [[ $# -gt 0 ]]; do
@@ -112,7 +106,7 @@ find_pico_port() {
   return 1
 }
 
-for command in anvil forge node npm python3 curl; do
+for command in anvil forge node npm python3 curl cast; do
   require_command "$command"
 done
 
@@ -163,6 +157,18 @@ echo "Deploying RentEscrow..."
   forge script script/Deploy.s.sol --rpc-url "$ORACLE_RPC_URL" --broadcast
   node go.cjs
 )
+
+# ---- SETUP SCRIPT ----
+CONTRACT_ADDR=$(node -e "console.log(require('./frontend/src/contract.json').address)")
+
+echo "Registering Housekeeper (Landlord) as FrankPepe (Auto-configured in UI)..."
+
+echo "Registering Tenant $TENANT_ADDRESS in Room A (0)..."
+cast send $CONTRACT_ADDR "registerTenant(uint8,address)" 0 $TENANT_ADDRESS --private-key $PRIVATE_KEY --rpc-url $ORACLE_RPC_URL
+
+echo "Depositing 20 ETH for Tenant..."
+cast send $CONTRACT_ADDR "deposit()" --value 20ether --private-key $TENANT_PK --rpc-url $ORACLE_RPC_URL
+# ----------------------
 
 echo "Starting backend..."
 python3 "$ROOT/hardware/web3_oracle.py" >"$ROOT/hardware/web3_oracle.full.out.log" 2>"$ROOT/hardware/web3_oracle.full.err.log" &
