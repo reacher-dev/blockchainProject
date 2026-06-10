@@ -131,12 +131,14 @@ export default function App() {
   const contractRef = useRef(null);
   const providerRef = useRef(null);
   const accountRef  = useRef(null);
+  const myRoomRef   = useRef(null);
 
   useEffect(() => {
     contractRef.current = contract;
     providerRef.current = provider;
     accountRef.current  = account;
-  }, [contract, provider, account]);
+    myRoomRef.current   = myRoom;
+  }, [contract, provider, account, myRoom]);
 
   // ── Simulated dB ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -167,13 +169,28 @@ export default function App() {
         if (eventKey !== lastBackendTimestamp.current) {
           lastBackendTimestamp.current = eventKey;
           if (Number.isFinite(currentDb)) setDbHistory(h => [...h.slice(1), currentDb]);
+          
           if (data.reportAllowed) {
-            setFlashRoom(Number(data.roomIndex));
-            setTimeout(() => setFlashRoom(null), 2000);
-          }
-          if (data.onchain?.submitted && eventKey !== lastChainSyncTimestamp.current && contractRef.current) {
-            lastChainSyncTimestamp.current = eventKey;
-            setTimeout(() => loadAll(contractRef.current, providerRef.current, accountRef.current), 900);
+            if (data.onchain?.submitted) {
+              if (eventKey !== lastChainSyncTimestamp.current && contractRef.current) {
+                lastChainSyncTimestamp.current = eventKey;
+                setTimeout(async () => {
+                  await loadAll(contractRef.current, providerRef.current, accountRef.current);
+                  setFlashRoom(Number(data.roomIndex));
+                  setTimeout(() => setFlashRoom(null), 2000);
+                  if (myRoomRef.current === Number(data.roomIndex)) {
+                    flash("warning", "⚠️ 警告：您的房間噪音超標，系統已紀錄違規！");
+                  } else {
+                    flash("info", `通知：${ROOM_NAMES[data.roomIndex]} 噪音超標，已紀錄違規。`);
+                  }
+                }, 2500);
+              }
+            } else if (data.onchain?.error) {
+              if (eventKey !== lastChainSyncTimestamp.current) {
+                lastChainSyncTimestamp.current = eventKey;
+                flash("warning", `⚠️ 違規上鏈失敗：請確認該房間有充足押金 (${data.onchain.error})`);
+              }
+            }
           }
         }
       } catch {
@@ -213,6 +230,7 @@ export default function App() {
   async function applyWalletState(w, shouldNavigate = true) {
     if (w.chainId !== 31337n) {
       setLoginError("請將 MetaMask 切換到 Anvil 本地鏈（Chain ID: 31337，RPC: http://127.0.0.1:8545）");
+      setConnecting(false);
       return;
     }
 
@@ -278,11 +296,20 @@ export default function App() {
           setNeedsNameSetup(false);
           if (shouldNavigate) setTab("admin");
         } catch {
-          localStorage.removeItem(landlordKey(addr));
-          setNeedsNameSetup(true);
+          // Auto-register as FrankPepe if corrupted
+          const defaultName = "FrankPepe";
+          localStorage.setItem(landlordKey(addr), JSON.stringify({ address: addr, name: defaultName }));
+          setLandlordName(defaultName);
+          setNeedsNameSetup(false);
+          if (shouldNavigate) setTab("admin");
         }
       } else {
-        setNeedsNameSetup(true);
+        // Auto-register as FrankPepe automatically
+        const defaultName = "FrankPepe";
+        localStorage.setItem(landlordKey(addr), JSON.stringify({ address: addr, name: defaultName }));
+        setLandlordName(defaultName);
+        setNeedsNameSetup(false);
+        if (shouldNavigate) setTab("admin");
       }
     } else {
       setLandlordName(null);
@@ -614,6 +641,7 @@ export default function App() {
             </>
           )}
         </div>
+
       </nav>
 
       {/* Message bar */}
