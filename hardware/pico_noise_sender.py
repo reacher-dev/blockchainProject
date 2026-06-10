@@ -8,8 +8,8 @@ from machine import I2S, Pin
 #            wifi = ??? WiFi ????? POST ??Oracle
 TRANSPORT_MODE = "wifi"
 
-SSID = "RyderPhone"
-PASSWORD = "harry123"
+SSID = "Reacher"
+PASSWORD = "Reacher0513"
 ORACLE_URL = "http://172.20.10.2:8000/noise/ingest"
 AUDIO_UPLOAD_URL = "http://172.20.10.2:8000/api/audio/upload"
 MIC_TEST_UPLOAD_URL = "http://172.20.10.2:8000/api/mic-test/upload"
