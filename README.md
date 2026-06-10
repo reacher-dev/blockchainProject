@@ -85,6 +85,7 @@ flowchart LR
 - Telemetry、裝置 online 狀態與 JSONL event log
 - 連續 PCM 錄音與 WAV 儲存
 - FFT 頻譜頁面、手動 label collection 與 sklearn 噪音分類模型
+- 機器學習信心指數（Confidence Tracking）與噪音平滑化過濾機制
 - 選用的 Oracle 自動上鏈
 
 完整硬體設定、API schema、接線、錄音及 FFT/ML 操作請閱讀 [`hardware/README.md`](hardware/README.md)。
@@ -111,7 +112,7 @@ python3 -m pip install \
 
 ## 啟動專案
 
-啟動腳本 (`run_all`) 會自動啟動 Anvil、部署 `RentEscrow` 合約、產生前端的合約 metadata、啟動 Python Backend 以及 React 前端，最後設定一個暫時的 Pico W 腳本透過 `mpremote` 執行。
+啟動腳本 (`run_all.sh` 或 `run_with_setup.sh`) 會自動啟動 Anvil、部署 `RentEscrow` 合約、產生前端的合約 metadata、註冊第一位測試房客（Tenant）、啟動 Python Backend 以及 React 前端，最後設定一個暫時的 Pico W 腳本透過 `mpremote` 執行。
 
 ### 使用 Launcher 啟動完整專案 (推薦)
 
@@ -129,9 +130,12 @@ ls /dev/cu.usbmodem*
 
 如果不想將密碼留在指令歷史紀錄中，可以使用環境變數：
 ```bash
-PICO_WIFI_SSID="您的WIFI名稱" PICO_WIFI_PASSWORD="您的WIFI密碼" ./run_all.sh --port /dev/cu.usbmodemXXXX
+PICO_WIFI_SSID="您的WIFI名稱" PICO_WIFI_PASSWORD="您的WIFI密碼" ./run_with_setup.sh --port /dev/cu.usbmodemXXXX
 ```
-若要停止 Pico 程式及所有被 launcher 啟動的服務，請按 `Ctrl+C`。
+
+⚠️ **重要提示**：
+1. 腳本執行後會開始瘋狂印出 Pico 的噪音資料（`Sending: {'device_id'...}`），**這是正常現象，請絕對不要按 `Ctrl+C` 中斷，否則伺服器與區塊鏈會被關閉！**
+2. 腳本啟動後會自動彈出瀏覽器。你只需要點擊網頁上的「連接 MetaMask」，系統就會全自動幫你以 `FrankPepe`（房東）或 `Tenant`（房客）的身分登入，免除手動註冊。
 
 #### Windows
 
@@ -210,12 +214,10 @@ Private key: 0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80
 *(此帳號與 private key 僅可用於本機 Anvil 開發，切勿用於正式網路！)*
 
 ### App Setup 流程
-1. 使用房東帳號連接 frontend。
-2. 點擊建立公寓，部署 frontend 實際使用的合約。
-3. Frontend 將地址儲存在 browser `localStorage`，並同步到 `POST /contract/address`。
-4. 在管理頁登記房客及房間。
-5. 切換到該房客帳號並存入至少 `0.004 ETH`。
-6. 設定完成後即可執行模擬流程或接上實體 Pico W。
+1. 執行 `./run_with_setup.sh` 後，等待瀏覽器自動開啟。
+2. 使用房東帳號 (`0xf39...`) 連接 MetaMask，系統將在背景自動將身分設定為 `FrankPepe` 並進入管理員畫面。
+3. 若使用房客帳號 (`0x3C44...`) 連線，由於腳本已自動代為註冊及繳交押金，將會直接進入房客專屬畫面。
+4. 設定完成後即可執行模擬流程或接上實體 Pico W 進行噪音測試。
 
 ## 最短 Demo 流程
 
@@ -290,8 +292,8 @@ curl http://127.0.0.1:8000/devices
 |------|------|----------|
 | Smart contract | 已完成 | 押金、累進罰款、申訴、Quadratic Voting、多 Oracle、nonce 防重放 |
 | Contract tests | 已完成 | Foundry 共 50 個 tests 通過 |
-| Frontend | 已完成主要功能 | 房東、房客與訪客介面；MetaMask；即時噪音 polling；合約操作 |
-| Oracle backend | 已完成主要功能 | Telemetry API、裝置狀態、事件紀錄、簽章上鏈、WAV、FFT 與 ML prediction |
+| Frontend | 已完成主要功能 | 房東、房客與訪客介面；MetaMask；即時噪音 polling；自動註冊身分；合約操作 |
+| Oracle backend | 已完成主要功能 | Telemetry API、簽章上鏈、WAV、FFT、ML prediction、噪音類別平滑化（Confidence Smoothing） |
 | Hardware code | 已完成 | Pico W Wi-Fi、INMP441 I2S、telemetry、連續 PCM 錄音與 upload |
 | Hardware-free simulation | 已驗證 | 可用 Python scripts 模擬 Pico telemetry 與 PCM audio |
 | FFT / ML demo | 已驗證 | FFT 頻譜、手動標記、sklearn model loading 與 prediction |
