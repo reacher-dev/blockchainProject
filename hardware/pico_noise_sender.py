@@ -8,11 +8,11 @@ from machine import I2S, Pin
 #            wifi = ??? WiFi ????? POST ??Oracle
 TRANSPORT_MODE = "wifi"
 
-SSID = "YOUR_WIFI_SSID"
-PASSWORD = "YOUR_WIFI_PASSWORD"
-ORACLE_URL = "http://YOUR_HOST_IP:8000/noise/ingest"
-AUDIO_UPLOAD_URL = "http://YOUR_HOST_IP:8000/api/audio/upload"
-MIC_TEST_UPLOAD_URL = "http://YOUR_HOST_IP:8000/api/mic-test/upload"
+SSID = "RyderPhone"
+PASSWORD = "harry123"
+ORACLE_URL = "http://172.20.10.2:8000/noise/ingest"
+AUDIO_UPLOAD_URL = "http://172.20.10.2:8000/api/audio/upload"
+MIC_TEST_UPLOAD_URL = "http://172.20.10.2:8000/api/mic-test/upload"
 WIFI_CONNECT_TIMEOUT_SECONDS = 35
 
 DEVICE_ID = "pico-w-001"

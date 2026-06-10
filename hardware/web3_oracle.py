@@ -99,7 +99,7 @@ DEPLOYED_NOISE_GROUPS = {
 DEVICE_WINDOWS = {}    # device_id -> [{"timestamp": t, "db": db}, ...]
 DEVICE_COOLDOWN = {}   # device_id -> last_violation_timestamp
 
-VIOLATION_WINDOW_SECONDS = int(os.getenv("ORACLE_VIOLATION_WINDOW", "5"))
+VIOLATION_WINDOW_SECONDS = int(os.getenv("ORACLE_VIOLATION_WINDOW", "10"))
 VIOLATION_COOLDOWN_SECONDS = int(os.getenv("ORACLE_VIOLATION_COOLDOWN", "30"))
 
 # Runtime contract address — overrides the value in contract.json.
@@ -1966,7 +1966,12 @@ setInterval(() => loadFFT(false), 1000);
                 noise_event["estimatedDb"],
                 noise_event["receivedAt"],
             )
-            should_submit = AUTO_SUBMIT_ONCHAIN and should_submit_raw
+            # 只有 human_created_noise 才允許上鏈；環境音與背景音豁免
+            sound_type = noise_event.get("soundType")
+            is_exempt = sound_type in ("environment_noise", "background") or sound_type is None
+            if is_exempt:
+                print(f"[exempt] sound_type={sound_type}, skipping on-chain submission")
+            should_submit = AUTO_SUBMIT_ONCHAIN and should_submit_raw and not is_exempt
             noise_event["reportAllowed"] = should_submit
             noise_event["avgDb"] = avg_db
             noise_event["windowSecs"] = window_secs
