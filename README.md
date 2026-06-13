@@ -297,7 +297,7 @@ curl http://127.0.0.1:8000/devices
 | Hardware code | 已完成 | Pico W Wi-Fi、INMP441 I2S、telemetry、連續 PCM 錄音與 upload |
 | Hardware-free simulation | 已驗證 | 可用 Python scripts 模擬 Pico telemetry 與 PCM audio |
 | FFT / ML demo | 已驗證 | FFT 頻譜、手動標記、sklearn model loading 與 prediction |
-| 三方端到端整合 | 進行中 | 需由實體 Pico W 經 Oracle 上鏈，再確認 frontend 狀態同步 |
+| 三方端到端整合 | 已完成 | 由實體 Pico W 經 Oracle 上鏈，並於 frontend 同步更新狀態（已錄製 Demo 影片 `0610(1)`） |
 
 **已通過的驗證項目：**
 - `forge test`: 50 passed
@@ -305,9 +305,9 @@ curl http://127.0.0.1:8000/devices
 - Python hardware scripts compile: passed
 - Telemetry API smoke test: passed
 - FFT/ML API smoke test: passed
+- 使用實體 Pico W + INMP441 完成最終端到端驗收與錄影
 
 **尚未完成：**
-- 使用實體 Pico W + INMP441 完成最終端到端驗收
 - 依真實聲級計校正 `estimated_db`；目前數值不是正式 dB SPL
 - 確認長時間錄音、Wi-Fi 斷線與重新連線的穩定性
 - 用不同房間、距離與背景聲擴充 ML dataset
