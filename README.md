@@ -282,11 +282,11 @@ curl http://127.0.0.1:8000/devices
 | Voice credits | 每人每案 9 credits |
 | 最低 quorum | 3 個投票單位 |
 
-目前 Oracle relay 只有在 `peak_decibel > 75` 時允許自動上鏈。因此目前實際硬體流程的有效門檻是高於 75；contract 本身仍接受任何高於 70 的有效 Oracle 報告。
+目前 Oracle relay 只有在 `peak_decibel > 75` 並且機器學習辨識結果為 `human_created_noise` 時允許自動上鏈。因此目前實際硬體流程的有效門檻是高於 75；contract 本身仍接受任何高於 70 的有效 Oracle 報告。
 
 ## 目前進度與驗證狀態
 
-最後更新：2026-06-06
+最後更新：2026-06-13
 
 | 模組 | 狀態 | 目前成果 |
 |------|------|----------|
