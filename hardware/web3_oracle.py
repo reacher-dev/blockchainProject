@@ -2101,9 +2101,19 @@ setInterval(() => loadFFT(false), 1000);
                 noise_event["estimatedDb"],
                 noise_event["receivedAt"],
             )
-            # 只有 human_created_noise 才允許上鏈；環境音與背景音豁免
+            # 如果 telemetry 沒附帶足夠長的音訊，改用前端顯示的 latest_fft 結果
             sound_type = noise_event.get("soundType")
-            is_exempt = sound_type in ("environment_noise", "background") or sound_type is None
+            if not sound_type:
+                latest_fft = STATE.get("latest_fft")
+                if latest_fft and latest_fft.get("available"):
+                    fft_age = int(time.time()) - int(latest_fft.get("created_at", 0))
+                    if fft_age <= INSTANT_FFT_STALE_SECONDS:
+                        sound_type = latest_fft.get("noise_group") or latest_fft.get("sound_type")
+            
+            noise_event["soundType"] = sound_type
+
+            # 只有 human_created_noise 才允許上鏈
+            is_exempt = sound_type != "human_created_noise"
             if is_exempt:
                 print(f"[exempt] sound_type={sound_type}, skipping on-chain submission")
             should_submit = AUTO_SUBMIT_ONCHAIN and should_submit_raw and not is_exempt

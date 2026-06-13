@@ -798,6 +798,9 @@ def main():
     global mic_test_force_recording_until
     global mic_test_force_recording_done
 
+    print("Booting... 3 seconds to interrupt")
+    time.sleep(3)
+
     connect_wifi()
     sync_time()
     print("Pico script version:", PICO_SCRIPT_VERSION)
