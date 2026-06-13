@@ -12,3 +12,7 @@ hardware/noise_events.jsonl
 .env.*
 !.env.example
 .pico_runtime_*
+broadcast/
+cache/
+out/
+command.txt
